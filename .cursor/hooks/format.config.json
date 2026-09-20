@@ -1,0 +1,35 @@
+{
+  "includePathPrefixes": [
+    "src/frontend/",
+    "src/backend/",
+    "frontend/",
+    "backend/",
+    "src/",
+    "app/",
+    "web/"
+  ],
+  "extensions": [
+    ".js",
+    ".jsx",
+    ".ts",
+    ".tsx",
+    ".css",
+    ".scss",
+    ".json",
+    ".md",
+    ".py"
+  ],
+  "excludePathContains": [
+    "node_modules/",
+    "dist/",
+    "build/",
+    ".git/",
+    ".venv/",
+    "venv/",
+    "__pycache__/"
+  ],
+  "runPrettier": true,
+  "runEslintFix": true,
+  "runBlack": true,
+  "runRuffFix": true
+}

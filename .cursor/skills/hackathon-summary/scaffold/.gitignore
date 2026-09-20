@@ -1,0 +1,23 @@
+# 環境変数・秘匿情報
+.env
+.env.local
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# エディタ
+.vscode/
+.idea/
+
+# 依存・ビルド（言語追加後に必要に応じて追記）
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+
+# ログ
+*.log

@@ -1,0 +1,13 @@
+---
+description: Cloud Run へ出すとき。秘密はコンソールだけ。localhost を本番 CORS に残さない。
+alwaysApply: false
+---
+
+# Deploy
+
+- 実行先は Cloud Run。手順の正は個人スキル `google-cloud-app-runtime` と公式のソースデプロイ。
+- 秘密は Cloud Run の環境変数か Secret Manager。リポジトリに書くのはキー名だけ。
+- 本番の CORS に `localhost` を残すな。
+- `GET /health` がデプロイ URL で 200 になること。
+- `--max-instances` を付けよ。公開 (`--allow-unauthenticated`) は、鍵が応答に含まれないことを確認してから。
+- キー名の一覧は `docs/deploy/env-contract.md`。

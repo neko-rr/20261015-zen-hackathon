@@ -1,0 +1,20 @@
+---
+description: 秘密情報をチャット、ログ、Git、ブラウザに出さない。
+alwaysApply: true
+---
+
+# Security
+
+- `.env` の実値、API キー、トークン、Cookie、署名 URL、サービスアカウント鍵をチャット・ログ・Git に書くな。
+- マシンの絶対パスをリポジトリに書くな。相対パスだけ。
+- `NEXT_PUBLIC_*` に入れてよいのは公開 URL だけ。Gemini のキーや Cloud の秘密は禁止。
+- 失敗ログの `Authorization` はマスクせよ。
+- 誤って出したら、値を繰り返さず無効化を案内せよ。
+
+| 場所 | 可 | 不可 |
+|------|----|------|
+| ブラウザに届くコード | 公開 API の URL | API キー、ADC、鍵 JSON |
+| サーバー（Cloud Run） | 実行時の環境変数、ADC | レスポンスやログへの秘密 |
+| Git | `.env.example` のキー名 | `.env` の実値 |
+
+詳細は `docs/deploy/env-contract.md`。

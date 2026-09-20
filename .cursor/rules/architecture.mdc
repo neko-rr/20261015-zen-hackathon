@@ -1,0 +1,20 @@
+---
+description: 変更時にどの文書を先に読むか。Web は薄く、Gemini はサーバーだけ。
+alwaysApply: true
+---
+
+# Architecture
+
+次の順で適用せよ。
+
+1. `security.mdc`
+2. `docs/idea.md` の MVP。スコープ外を足すな
+3. `docs/google-cloud-japan-ai-hackathon-vol5-regulation-summary.md`
+4. `docs/deploy/env-contract.md`
+5. API を触るなら `api_contract.mdc`
+6. デプロイなら `deploy.mdc`
+
+- 写真の解析と Gemini 呼び出しはサーバーだけ。ブラウザから直接呼ぶな。
+- 画面は操作を見せる。認証はサンプル写真なら不要（`docs/idea.md`）。
+- ログインを足すなら、ソーシャルログインとメール受信必須は避け、テスト用アカウントとサンプルを用意せよ。
+- Render や Cloudflare をこの大会の実行先にするな。実行は Cloud Run。

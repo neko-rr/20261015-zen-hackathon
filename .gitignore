@@ -1,0 +1,67 @@
+# 環境変数・秘匿情報
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Google Cloud / ADC（鍵 JSON。リポジトリに置かない）
+application_default_credentials.json
+*-service-account.json
+*service-account*.json
+*-credentials.json
+client_secret*.json
+
+# 公開リポジトリに載せない作業メモ（退避先: ../20261015-zen-hackathon-private）
+cursor.md
+cursor_error.md
+notes/**
+!notes/README.md
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# エディタ（.cursor はリポジトリに含める）
+.vscode/
+.idea/
+
+# 依存・ビルド
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+*.egg-info/
+.eggs/
+
+# ログ
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# デプロイ・クラウド（ローカル設定）
+.vercel/
+.aws-sam/
+samconfig.toml
+
+# テスト・カバレッジ
+coverage/
+.nyc_output/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/

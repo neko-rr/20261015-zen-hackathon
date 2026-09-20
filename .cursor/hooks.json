@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "node .cursor/hooks/guard-secrets-prompt.js",
+        "timeout": 10
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/guard-shell.js",
+        "timeout": 10,
+        "matcher": "git\\s"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node .cursor/hooks/format-after-edit.js",
+        "timeout": 30
+      }
+    ]
+  }
+}

@@ -1,0 +1,88 @@
+export type Locale = "ja" | "en";
+
+const COPY = {
+  ja: {
+    title: "絵の資料",
+    lead: "写真を物体に分け、選んだ1つを詳しく見る。",
+    demo: "デモ",
+    demoHint: "ログイン操作は不要です。",
+    language: "言語",
+    theme: "テーマ",
+    pickPhoto: "写真を選ぶ",
+    pickHint: "JPEG、PNG、WebP。10MB 以下。",
+    analyzing: "物体を分けています…",
+    layers: "検出した物体",
+    noLayers: "写真を上げると、人・動物・物体がここに出ます。",
+    primary: "主対象",
+    noBox: "枠なし",
+    kindPerson: "人",
+    kindAnimal: "動物",
+    kindObject: "物体",
+    proceed: "この物体を詳しく見る",
+    back: "物体の選択に戻る",
+    skeleton: "骨格",
+    muscle: "筋肉",
+    contour: "輪郭",
+    detailEmpty: "この表示に使える点は、まだありません。",
+    lookup: "この物体を調べる",
+    looking: "出典を調べています…",
+    sources: "出典",
+    summary: "短い説明",
+    license: "ライセンス",
+    created: "作成時期",
+    copyright: "著作権",
+    unknown: "未確認",
+    suggestions: "検索の表示",
+    history: "出典の履歴",
+    apiDown: "API に届きません。8000 番が起動しているか確認してください。",
+    apiOk: "API は応答しています。",
+    emptyLookup: "物体を選ぶと、出典がここに残ります。",
+  },
+  en: {
+    title: "Drawing reference",
+    lead: "Split the photo into objects, then open one in detail.",
+    demo: "Demo",
+    demoHint: "No sign-in step.",
+    language: "Language",
+    theme: "Theme",
+    pickPhoto: "Choose a photo",
+    pickHint: "JPEG, PNG, or WebP. Up to 10MB.",
+    analyzing: "Finding objects…",
+    layers: "Detected objects",
+    noLayers: "People, animals, and objects appear here after you upload a photo.",
+    primary: "Main subject",
+    noBox: "No box",
+    kindPerson: "Person",
+    kindAnimal: "Animal",
+    kindObject: "Object",
+    proceed: "Open this object",
+    back: "Back to objects",
+    skeleton: "Skeleton",
+    muscle: "Muscle",
+    contour: "Outline",
+    detailEmpty: "No points for this view yet.",
+    lookup: "Look up this object",
+    looking: "Looking up sources…",
+    sources: "Sources",
+    summary: "Short note",
+    license: "License",
+    created: "Date",
+    copyright: "Copyright",
+    unknown: "Unconfirmed",
+    suggestions: "Search display",
+    history: "Source history",
+    apiDown: "The API is not reachable. Check that port 8000 is running.",
+    apiOk: "The API is responding.",
+    emptyLookup: "Pick an object to keep a source here.",
+  },
+} as const;
+
+export type MessageKey = keyof (typeof COPY)["ja"];
+
+export function text(locale: Locale, key: MessageKey): string {
+  return COPY[locale][key];
+}
+
+export function sanitizeLocale(raw: string | null): Locale {
+  return raw === "en" ? "en" : "ja";
+}

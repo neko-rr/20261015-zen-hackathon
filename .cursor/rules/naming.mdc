@@ -1,0 +1,13 @@
+---
+description: 識別子は英語。画面の文とコメントは日本語。JSON は snake_case。
+alwaysApply: true
+---
+
+# Naming
+
+- JSON と API のキーは snake_case。
+- Python の関数は snake_case、クラスは PascalCase。
+- React コンポーネントのファイルは PascalCase。URL の区切りは kebab-case。
+- コメントと利用者向けの文は日本語。識別子は英語。
+- `foo_final2` や日本語のコードファイル名は作るな。
+- 絶対パスをドキュメントに書くな。
