@@ -41,7 +41,7 @@ docs/ideas/comparison.md         # 議論用サマリ（任意）
 ## いつ使わないか
 
 - テーマもカテゴリも未定 → 先に [hackathon-ideation](../hackathon-ideation/SKILL.md) で仮説を1行
-- 実装・API 設計 → [hackathon-bedrock](../hackathon-bedrock/SKILL.md) 等
+- 実装・API 設計 → [cloud-run-gemini](../cloud-run-gemini/SKILL.md) 等
 - 深い市場規模・財務分析 → ハッカソン範囲外（スキップ）
 
 ## 2つのモード

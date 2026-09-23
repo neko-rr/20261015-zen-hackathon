@@ -13,6 +13,7 @@
 | security.mdc | 毎回 |
 | architecture.mdc | 毎回 |
 | naming.mdc | 毎回 |
+| agent-efficiency.mdc | 毎回（検索範囲・本戦締切） |
 | api_contract.mdc | `apps/` を触るとき |
 | deploy.mdc | デプロイや本番 URL のとき |
 

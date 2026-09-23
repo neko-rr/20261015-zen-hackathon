@@ -41,7 +41,7 @@ description: >-
 ## いつ使わないか
 
 - アイデア未確定 → [hackathon-ideation](../hackathon-ideation/SKILL.md)
-- API / Lambda 設計 → [hackathon-bedrock](../hackathon-bedrock/SKILL.md) / `AGENTS.md`
+- API / Cloud Run 設計 → [cloud-run-gemini](../cloud-run-gemini/SKILL.md) / `AGENTS.md`
 - タスク分解のみ → [hackathon-tasks-plan](../hackathon-tasks-plan/SKILL.md)
 
 ## 2つのモード

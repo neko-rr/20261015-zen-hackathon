@@ -115,7 +115,8 @@ Task Progress:
 | [hackathon-ideation](../hackathon-ideation/SKILL.md) | 直前 |
 | [hackathon-design-md](../hackathon-design-md/SKILL.md) | 直前（推奨） |
 | [hackathon-tasks-sync](../hackathon-tasks-sync/SKILL.md) | 開発中 |
-| [hackathon-bedrock](../hackathon-bedrock/SKILL.md) | Bedrock / LLM API 実装時 |
+| [cloud-run-gemini](../cloud-run-gemini/SKILL.md) | Cloud Run / Gemini / デプロイ |
+| [gcp-for-aws-users](../gcp-for-aws-users/SKILL.md) | AWS 名での GCP 読み替え |
 
 ## 追加リソース
 

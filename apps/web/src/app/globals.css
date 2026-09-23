@@ -235,10 +235,42 @@ input {
   margin-top: 12px;
 }
 
+.chat-form {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-label {
+  font-weight: 600;
+}
+
+.chat-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+}
+
+.chat-form textarea:disabled {
+  opacity: 0.6;
+}
+
 .lookup:disabled,
-.file input:disabled {
+.file input:disabled,
+.chat-form button:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+.jev {
+  margin-top: 8px;
 }
 
 .modes {
@@ -260,17 +292,104 @@ input {
   width: 100%;
   height: 100%;
   overflow: visible;
+  pointer-events: none;
 }
 
-.contour polygon {
+.contour polygon,
+.contour .contour-hit {
   fill: color-mix(in oklch, var(--primary) 16%, transparent);
   stroke: var(--primary);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.contour.is-selected polygon,
+.contour.is-selected .contour-hit {
+  fill: color-mix(in oklch, var(--primary) 28%, transparent);
+  stroke-width: 3;
+}
+
+.contour.is-primary polygon,
+.contour.is-primary .contour-hit {
+  stroke-width: 3;
+}
+
+.pose-lines {
+  pointer-events: none;
+}
+
+.pose-bone {
+  stroke: var(--destructive);
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.pose-bone-torso {
+  stroke-width: 3;
+}
+
+.pose-bone-limb {
+  stroke-width: 2.5;
+}
+
+.pose-bone-thin,
+.pose-bone-neck {
+  stroke-width: 2;
+}
+
+.pose-bone.is-muscle.pose-bone-torso {
+  stroke-width: 14;
+  stroke: color-mix(in oklch, var(--destructive) 70%, #c45c26);
+}
+
+.pose-bone.is-muscle.pose-bone-limb {
+  stroke-width: 9;
+}
+
+.pose-bone.is-muscle.pose-bone-thin,
+.pose-bone.is-muscle.pose-bone-neck {
+  stroke-width: 5;
+}
+
+.pose-joint {
+  fill: var(--destructive);
+  stroke: var(--background);
+  stroke-width: 0.002;
+}
+
+.pose-head {
+  fill: color-mix(in oklch, var(--destructive) 18%, transparent);
+  stroke: var(--destructive);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
 .muscle {
   background: var(--foreground);
+}
+
+.anatomy-viewer {
+  margin-top: 8px;
+}
+
+.anatomy-layers {
+  margin-bottom: 4px;
+}
+
+.anatomy-canvas {
+  width: 100%;
+  min-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.anatomy-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
 }
 
 .error {
@@ -319,8 +438,223 @@ input {
   margin-top: 16px;
 }
 
+.drop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 160px;
+  padding: 16px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  background: color-mix(in oklch, var(--background) 92%, var(--primary));
+}
+
+.drop-zone.is-own {
+  border-color: color-mix(in oklch, var(--primary) 55%, var(--border));
+}
+
+.drop-zone.is-third {
+  border-color: color-mix(in oklch, var(--muted-foreground) 40%, var(--border));
+}
+
+.drop-zone.is-active {
+  border-style: solid;
+  background: color-mix(in oklch, var(--primary) 12%, var(--background));
+}
+
+.material-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.material-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.turn-meta {
+  font-size: 0.9rem;
+  color: var(--muted-foreground);
+  margin: 0 0 8px;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.compare-col h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.source-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.badge.risk-easy {
+  color: var(--primary);
+}
+
+.badge.risk-conditional {
+  color: var(--foreground);
+}
+
+.badge.risk-review {
+  color: var(--destructive-foreground);
+}
+
+.copy-credit {
+  margin-top: 8px;
+}
+
+.checklist {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: 9em 1fr;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.check-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.check-options button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.project-bar {
+  margin-bottom: 16px;
+}
+
+.project-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.project-row select,
+.project-row input,
+.tag-edit input,
+.source-note textarea,
+.personal-filters select {
+  min-width: 12rem;
+  flex: 1;
+}
+
+.tag-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tag-chip {
+  font-size: 0.8rem;
+}
+
+.tag-chip.is-on,
+.favorite-btn.is-on {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.personal-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.lookup-again {
+  margin-bottom: 8px;
+}
+
+.source-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.favorite-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.favorite-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.material-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
 @media (max-width: 800px) {
   .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .drop-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .check-row {
     grid-template-columns: 1fr;
   }
 }

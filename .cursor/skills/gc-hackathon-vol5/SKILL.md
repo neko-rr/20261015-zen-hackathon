@@ -34,3 +34,7 @@ description: >-
 ### 適合チェックと提出前チェック
 
 [references/checklist.md](references/checklist.md) に従う。結果は「満たしている / 不足 / 判定できない」に分ける。検出できないことを「使っていない」と断定しない。
+
+### 提出物の作り方
+
+図・動画・ダッシュボードの記入手順は [gc-hackathon-vol5-submit](../gc-hackathon-vol5-submit/SKILL.md)。検査はこの skill、作成は submit。

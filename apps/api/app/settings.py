@@ -31,6 +31,8 @@ class Settings:
     gemini_model: str
     cloud_project: str
     use_enterprise: bool
+    session_signing_secret: str
+    session_cookie_secure: bool
 
 
 def load_settings() -> Settings:
@@ -41,12 +43,15 @@ def load_settings() -> Settings:
         for item in local_origins:
             if item not in origins:
                 origins.append(item)
+    secure_raw = os.getenv("SESSION_COOKIE_SECURE", "").strip().lower()
     return Settings(
         cors_origins=origins,
         gemini_model=os.getenv("GEMINI_MODEL", "").strip(),
         cloud_project=os.getenv("GOOGLE_CLOUD_PROJECT", "").strip(),
         use_enterprise=os.getenv("GOOGLE_GENAI_USE_ENTERPRISE", "").strip().lower()
         == "true",
+        session_signing_secret=os.getenv("SESSION_SIGNING_SECRET", "").strip(),
+        session_cookie_secure=secure_raw == "true",
     )
 
 

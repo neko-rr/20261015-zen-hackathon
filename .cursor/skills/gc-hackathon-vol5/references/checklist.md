@@ -38,3 +38,5 @@ Gemini API の AI Studio 直接利用、Firebase 経由の Gemini API は AI 条
 6. 期限は 2026-10-15 23:59。ダッシュボード: https://zenn.dev/hackathons/google-cloud-japan-ai-hackathon-vol5/dashboard
 
 不足と対応を一覧で報告する。
+
+提出物そのものの作り方（図・動画・ダッシュボード記入）は [../gc-hackathon-vol5-submit/SKILL.md](../gc-hackathon-vol5-submit/SKILL.md)。

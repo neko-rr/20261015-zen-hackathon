@@ -27,10 +27,20 @@
 | `GOOGLE_CLOUD_LOCATION` | 同上 | 秘密ではない | 例: `global` |
 | `GOOGLE_GENAI_USE_ENTERPRISE` | 同上 | 秘密ではない | `True` で Agent Platform 側 |
 | `GOOGLE_API_KEY` | ローカル試作のみ任意 | 秘密 | 本番の既定は ADC。Git 禁止 |
-| `GCS_BUCKET` | 写真を保存するとき必須 | 秘密ではない | `illustration-support-photos`。大阪 `asia-northeast2`。中身の URL は書かない |
+| `GCS_BUCKET` | 写真・資料をクラウド保存するとき必須 | 秘密ではない | `illustration-support-photos`。未設定時は API ローカル `.data` |
 | `TYPESAFE_API_KEY` | 検める・確かめるとき必須 | 秘密 | 未設定ならその段は飛ばす。枠は Gemini の確信度のまま。権利は `unknown` |
+| `SESSION_SIGNING_SECRET` | セッション必須 | 秘密 | Cookie の HMAC 署名。十分長いランダム文字列。Git 禁止 |
+| `SESSION_COOKIE_SECURE` | 任意 | 秘密ではない | `true` なら Secure 属性。本番 HTTPS では `true`。ローカル http は `false` または未設定 |
+| `RAG_ENABLED` | 任意 | 秘密ではない | `true` で Vertex AI RAG Engine。未設定／`false` はローカル簡易索引 |
 
 Gemini の呼び出しはサーバーだけ。公式: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/sdks/overview
+
+## 後回し（提出後・需要確認後）
+
+| キー | 区分 | 公開 | 備考 |
+|------|------|------|------|
+| `SUPABASE_URL` | 後回し | 秘密ではない | 推し活と連携するときだけ。ハッカソン提出物では使わない |
+| `SUPABASE_JWT_SECRET` | 後回し | 秘密 | JWT 検証用。サービスロール鍵は置かない |
 
 ## この大会で使うプロジェクト
 

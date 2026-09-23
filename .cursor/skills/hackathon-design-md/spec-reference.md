@@ -77,7 +77,7 @@ npx @google/design.md tailwind DESIGN.md
 
 | 内容 | 置き場所 |
 |------|----------|
-| API / エンドポイント | `AGENTS.md`, bedrock Skill |
+| API / エンドポイント | `AGENTS.md`, `cloud-run-gemini` |
 | アーキテクチャ図 | `docs/infrastructure-*.md` |
 | デモ手順 | `docs/demo-script.md` |
 | タスク | `docs/tasks.md` |

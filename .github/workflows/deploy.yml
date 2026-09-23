@@ -1,11 +1,9 @@
-# リポジトリ変数を入れてから動く。ローカルは scripts/deploy.ps1 でも可。
-# 必要な変数: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SA
+# 開発中は push では動かない。出すときは Actions の手動実行か scripts/deploy.ps1。
+# GitHub からの手動実行には変数が必要: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SA
 name: deploy
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 env:
   PROJECT_ID: illustration-support

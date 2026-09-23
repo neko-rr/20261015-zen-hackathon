@@ -30,11 +30,11 @@
 
 | 除外 | 理由 |
 |------|------|
-| API / Lambda / Bedrock | 技術設計。DESIGN.md の範囲外 |
+| API / Cloud Run / Gemini | 技術設計。DESIGN.md の範囲外 |
 | データモデル | 同上 |
 | デモ手順 | demo-script.md |
 | タスク一覧 | tasks.md |
-| プロンプト全文 | コード / bedrock Skill |
+| プロンプト全文 | コード / `cloud-run-gemini` / `typesafe-jev` |
 | API キー | .env のみ |
 
 ## 品質チェックリスト

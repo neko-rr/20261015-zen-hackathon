@@ -1,0 +1,3 @@
+# MediaPipe Pose モデル（Docker ビルド時に取得。ローカルは scripts で落とす）
+*.task
+*.tflite

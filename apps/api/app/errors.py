@@ -16,6 +16,10 @@ def business_error(code: str, message: str) -> AppError:
     return AppError(code, message, 400)
 
 
+def unauthorized_error(code: str, message: str) -> AppError:
+    return AppError(code, message, 401)
+
+
 def system_error(code: str, message: str) -> AppError:
     return AppError(code, message, 500)
 

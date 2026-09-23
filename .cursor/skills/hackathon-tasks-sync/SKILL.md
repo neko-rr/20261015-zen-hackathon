@@ -85,7 +85,7 @@ Task Progress:
 | [hackathon-tasks-plan](../hackathon-tasks-plan/SKILL.md) | 初回のみ |
 | [milestones.md](../hackathon-tasks-plan/milestones.md) | ゲート判定 |
 | [judging-tasks.md](../hackathon-tasks-plan/judging-tasks.md) | panic 時のデモ最小化 |
-| [hackathon-bedrock](../hackathon-bedrock/SKILL.md) | Lambda + Bedrock 実装 |
+| [cloud-run-gemini](../cloud-run-gemini/SKILL.md) | Cloud Run / Gemini / デプロイ |
 
 ## 追加リソース
 

@@ -1,0 +1,20 @@
+---
+description: 検索を依存から外し、ミニハッカソンの時間制約を使わず本戦締切だけを見る。
+alwaysApply: true
+---
+
+# Agent efficiency
+
+## ファイル検索
+
+- `node_modules` / `.venv` / `venv` / `.next` / `__pycache__` / `dist` / `build` / `coverage` は検索・一覧・読み込みの対象にしない。
+- リポジトリ全体の再帰探索を避け、`apps/web`・`apps/api`・`docs/`・`.cursor/rules/` など必要なパスに絞る。
+- 広い Glob（例: `**/*`）より、拡張子やディレクトリを指定した Grep / Glob を使う。
+- `.cursorignore` がある。無視リストを広げたいときはそこを更新する。
+
+## 締切・時間制約
+
+- ミニハッカソン（当日発表・14:30・short / panic / 30分ゲート）は終了済み。それらの時間制限は適用しない。
+- 意識する提出締切は **2026-10-15 23:59** のみ（提出後〜2026-12-01 はデフォルトブランチ凍結）。
+- `docs/tasks.md` は開発時間区分 `full`・日付ベースのマイルストーンを正とする。
+- `hackathon-tasks-plan` / `hackathon-tasks-sync` の short・panic は、ユーザーが当日型ハッカソン向けに明示したときだけ使う。

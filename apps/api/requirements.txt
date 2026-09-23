@@ -5,3 +5,8 @@ python-dotenv==1.1.1
 google-genai==1.32.0
 pydantic==2.13.5
 typesafe-sdk==0.7.0
+Pillow==11.3.0
+mediapipe==0.10.21
+python-docx==1.2.0
+openpyxl==3.1.5
+pypdf==5.9.0

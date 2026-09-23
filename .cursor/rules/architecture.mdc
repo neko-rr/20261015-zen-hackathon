@@ -18,3 +18,4 @@ alwaysApply: true
 - 画面は操作を見せる。認証はサンプル写真なら不要（`docs/idea.md`）。
 - ログインを足すなら、ソーシャルログインとメール受信必須は避け、テスト用アカウントとサンプルを用意せよ。
 - Render や Cloudflare をこの大会の実行先にするな。実行は Cloud Run。
+- 機能・API・画面の実装を終えたら、完了報告の前に `.cursor/skills/impl-docs-sync/SKILL.md` で `docs/` を同期せよ。`.cursor/plans` だけでは他セッションに伝わらない。依頼なしにデプロイするな。

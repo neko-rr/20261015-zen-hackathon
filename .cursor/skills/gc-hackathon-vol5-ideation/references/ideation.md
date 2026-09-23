@@ -36,6 +36,7 @@
 - 使える時間、人数、得意技術を確認する
 - MVP と、余ったら足すもの、やらないものに分ける
 - 外部 API の審査、有料枠、データ入手を先に潰す
+- 費用対効果・運用の単純さは [cost-practical-proposals](../../cost-practical-proposals/SKILL.md) で最新料金を検索してから話す
 
 ## 5. シート
 

@@ -8,7 +8,11 @@ alwaysApply: false
 
 - JSON のフィールド名は snake_case。
 - エラーは `{ "error": { "code", "message" } }`。秘密やスタックトレースを入れるな。
-- 死活は `GET /health`。認証不要。
+- 死活は `GET /health`。セッション不要。
+- セッションは `POST /sessions`（Cookie）。写真・履歴 API はセッション必須。
 - パスは複数形の名詞（`/photos`）。`getXxx` というパスを作るな。
-- ユーザー ID をクエリで渡してなりすまさせるな。
+- ユーザー ID をクエリで渡してなりすまさせるな。所有者は Cookie の `owner_id` だけ。
 - Gemini と検索はサーバー内。結果の出典 URL は返してよい。キーは返すな。
+- 手元資料は `/materials`・案件は `/projects`。どちらも `owner_id` 単位。横断読み取り禁止。
+- `lookups` / `questions` の任意 `tags` / `project_id` は手元 RAG 用。Web grounding の秘密を増やさない。
+- お気に入り・出典メモはサーバー API に載せない（画面セッション＋書き出し）。
