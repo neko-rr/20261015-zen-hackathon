@@ -15,7 +15,7 @@ def create_photo(objects: list[dict], owner_id: str, pose: dict | None = None) -
         _photos[photo_id] = {
             "owner_id": owner_id,
             "objects": objects,
-            "pose": pose or {"landmarks": [], "edges": [], "muscles": []},
+            "pose": _copy_pose(pose),
             "lookups": [],
             "questions": [],
         }
@@ -32,18 +32,46 @@ def get_photo(photo_id: str, owner_id: str) -> dict | None:
             return None
         if photo.get("owner_id") != owner_id:
             return None
-        pose = photo.get("pose") or {"landmarks": [], "edges": [], "muscles": []}
         return {
             "owner_id": photo["owner_id"],
             "objects": list(photo["objects"]),
-            "pose": {
-                "landmarks": list(pose.get("landmarks") or []),
-                "edges": list(pose.get("edges") or []),
-                "muscles": list(pose.get("muscles") or []),
-            },
+            "pose": _copy_pose(photo.get("pose")),
             "lookups": list(photo["lookups"]),
             "questions": list(photo.get("questions", [])),
         }
+
+
+def _copy_pose(pose: dict | None) -> dict:
+    source = pose or {}
+    return {
+        "landmarks": list(source.get("landmarks") or []),
+        "edges": list(source.get("edges") or []),
+        "muscles": list(source.get("muscles") or []),
+        "hands": list(source.get("hands") or []),
+        "mannequin": _copy_mannequin(source.get("mannequin")),
+        "people": [_copy_person(item) for item in source.get("people") or [] if isinstance(item, dict)],
+    }
+
+
+def _copy_person(person: dict) -> dict:
+    return {
+        "object_id": str(person.get("object_id") or ""),
+        "landmarks": list(person.get("landmarks") or []),
+        "edges": list(person.get("edges") or []),
+        "muscles": list(person.get("muscles") or []),
+        "hands": list(person.get("hands") or []),
+        "mannequin": _copy_mannequin(person.get("mannequin")),
+    }
+
+
+def _copy_mannequin(mannequin: dict | None) -> dict:
+    source = mannequin or {}
+    return {
+        "joints": list(source.get("joints") or []),
+        "bones": list(source.get("bones") or []),
+        "head": source.get("head"),
+        "aspect": float(source.get("aspect") or 1),
+    }
 
 
 def add_lookup(photo_id: str, owner_id: str, lookup: dict) -> bool:

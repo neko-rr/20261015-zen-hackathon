@@ -26,6 +26,24 @@ _KIND_LABEL = {
 }
 
 
+def quoted_rights(chunks: list[dict[str, str]]) -> list[dict[str, Any]]:
+    """自動検索用。ページ本文にある文言だけを残す。無ければ unknown。判断はしない。"""
+    rows: list[dict[str, Any]] = []
+    for item in _group(chunks):
+        spans = item["spans"]
+        rows.append(
+            {
+                "url": item["url"],
+                "title": item["title"],
+                "license": spans["license"] or "unknown",
+                "created": spans["created"] or "unknown",
+                "copyright": spans["copyright"] or "unknown",
+                "material_kind": item.get("material_kind") or "web",
+            }
+        )
+    return rows
+
+
 def verify_sources(
     label: str,
     chunks: list[dict[str, str]],

@@ -1,4 +1,4 @@
-/** デッサン用の簡略人体。顔の細部・指は描かない。 */
+/** 旧来の簡略線。画面の人形は API の mannequin を使う。 */
 
 import type { PoseData, PoseLandmark } from "@/lib/api";
 

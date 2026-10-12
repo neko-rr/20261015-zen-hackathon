@@ -133,6 +133,103 @@ input {
   padding: 14px;
 }
 
+.view-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.view-grid.is-1 {
+  grid-template-columns: 1fr;
+}
+
+.view-grid.is-2,
+.view-grid.is-3,
+.view-grid.is-4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.compare-panel {
+  min-width: 0;
+}
+
+.compare-panel-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.compare-panel-bar select {
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.compare-panel-bar .modes,
+.guide-row .modes {
+  margin-top: 0;
+}
+
+.perspective-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.perspective-horizon,
+.perspective-ray {
+  fill: none;
+  stroke: #8fd3ff;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.perspective-horizon {
+  stroke-width: 1.75;
+}
+
+.perspective-ray {
+  stroke-width: 1;
+  opacity: 0.8;
+}
+
+.perspective-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: ns-resize;
+}
+
+.perspective-vp {
+  fill: #8fd3ff;
+  stroke: #123044;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: all;
+  cursor: ew-resize;
+}
+
+.perspective-vp.is-second {
+  fill: #d6f3ff;
+}
+
+.view-grid .stage-wrap {
+  width: 100%;
+}
+
+.view-grid .stage-wrap img {
+  width: 100%;
+}
+
+.view-grid .anatomy-canvas {
+  min-height: 220px;
+}
+
 .stage-wrap {
   position: relative;
   display: inline-block;
@@ -143,6 +240,14 @@ input {
   display: block;
   max-width: 100%;
   height: auto;
+}
+
+.stage-wrap.is-flipped {
+  transform: scaleX(-1);
+}
+
+.stage-wrap img.is-gray {
+  filter: grayscale(1);
 }
 
 .overlay {
@@ -364,6 +469,250 @@ input {
   stroke: var(--destructive);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
+}
+
+.pose-bone.is-observed {
+  stroke: #c4a574;
+}
+
+.pose-bone.is-inferred {
+  stroke: #3aa0e8;
+}
+
+.mannequin-svg .pose-bone-torso {
+  stroke-width: 18;
+}
+
+.mannequin-svg .pose-bone-limb {
+  stroke-width: 11;
+}
+
+.mannequin-svg .pose-bone-thin {
+  stroke-width: 7;
+}
+
+.pose-shape.is-observed {
+  fill: #c4a574;
+}
+
+.pose-shape.is-inferred {
+  fill: #3aa0e8;
+}
+
+.pose-joint.is-observed {
+  fill: #c4a574;
+}
+
+.pose-joint.is-inferred {
+  fill: #3aa0e8;
+}
+
+.pose-head.is-observed {
+  fill: color-mix(in oklch, #c4a574 28%, transparent);
+  stroke: #c4a574;
+}
+
+.pose-head.is-inferred {
+  fill: color-mix(in oklch, #3aa0e8 28%, transparent);
+  stroke: #3aa0e8;
+}
+
+.mannequin-svg.tone-1 .pose-shape.is-observed,
+.mannequin-svg.tone-1 .pose-joint.is-observed {
+  fill: #d07a6a;
+}
+
+.mannequin-svg.tone-1 .pose-bone.is-observed,
+.mannequin-svg.tone-1 .pose-head.is-observed {
+  stroke: #d07a6a;
+}
+
+.mannequin-svg.tone-1 .pose-head.is-observed {
+  fill: color-mix(in oklch, #d07a6a 28%, transparent);
+}
+
+.mannequin-svg.tone-2 .pose-shape.is-observed,
+.mannequin-svg.tone-2 .pose-joint.is-observed {
+  fill: #6a9a72;
+}
+
+.mannequin-svg.tone-2 .pose-bone.is-observed,
+.mannequin-svg.tone-2 .pose-head.is-observed {
+  stroke: #6a9a72;
+}
+
+.mannequin-svg.tone-2 .pose-head.is-observed {
+  fill: color-mix(in oklch, #6a9a72 28%, transparent);
+}
+
+.mannequin-svg.tone-3 .pose-shape.is-observed,
+.mannequin-svg.tone-3 .pose-joint.is-observed {
+  fill: #7a8ec4;
+}
+
+.mannequin-svg.tone-3 .pose-bone.is-observed,
+.mannequin-svg.tone-3 .pose-head.is-observed {
+  stroke: #7a8ec4;
+}
+
+.mannequin-svg.tone-3 .pose-head.is-observed {
+  fill: color-mix(in oklch, #7a8ec4 28%, transparent);
+}
+
+.mannequin-svg.is-active .pose-shape.is-observed,
+.mannequin-svg.is-active .pose-joint.is-observed {
+  stroke: #f4f1ea;
+  stroke-width: 0.008;
+}
+
+.swatch.tone-0 {
+  background: #c4a574;
+}
+
+.swatch.tone-1 {
+  background: #d07a6a;
+}
+
+.swatch.tone-2 {
+  background: #6a9a72;
+}
+
+.swatch.tone-3 {
+  background: #7a8ec4;
+}
+
+.pose-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.mannequin-svg {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.7));
+}
+
+.doll-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.doll-group {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.doll-group legend {
+  padding: 0 6px;
+  font-size: 0.85rem;
+}
+
+.doll-group .proportion-row,
+.doll-group .guide-row {
+  margin-top: 0;
+}
+
+.guide-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.guide-row button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: transparent;
+}
+
+.twist-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.twist-field input[type="range"] {
+  width: 7rem;
+}
+
+.pose-guide-ruler,
+.pose-guide-balance {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.pose-guide-ruler {
+  stroke: #ffe08a;
+  stroke-width: 1.5;
+}
+
+.pose-guide-balance {
+  stroke: #e07070;
+  stroke-width: 1.75;
+  stroke-dasharray: 4 3;
+}
+
+.pose-guide-label {
+  fill: #ffe08a;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.proportion-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.proportion-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.proportion-field select {
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.mannequin-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.mannequin-legend {
+  display: flex;
+  gap: 14px;
+  font-size: 0.85rem;
+}
+
+.mannequin-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.swatch.is-observed {
+  background: #c4a574;
+}
+
+.swatch.is-inferred {
+  background: #3aa0e8;
 }
 
 .muscle {
@@ -643,6 +992,12 @@ input {
 
 @media (max-width: 800px) {
   .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .view-grid.is-2,
+  .view-grid.is-3,
+  .view-grid.is-4 {
     grid-template-columns: 1fr;
   }
 

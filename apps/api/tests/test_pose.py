@@ -1,6 +1,6 @@
 """姿勢まわりの単体テスト（MediaPipe 本体は呼ばない）。"""
 
-from app.pose import empty_pose, _muscle_labels
+from app.pose import empty_pose, order_people, _muscle_labels
 
 
 def test_empty_pose_shape():
@@ -8,6 +8,15 @@ def test_empty_pose_shape():
     assert pose["landmarks"] == []
     assert pose["edges"] == []
     assert pose["muscles"] == []
+    assert pose["people"] == []
+
+
+def test_people_are_ordered_left_to_right():
+    right = {"landmarks": [{"index": 11, "x": 0.7, "y": 0.3}, {"index": 12, "x": 0.9, "y": 0.3}]}
+    left = {"landmarks": [{"index": 11, "x": 0.1, "y": 0.3}, {"index": 12, "x": 0.3, "y": 0.3}]}
+    ordered = order_people([right, left])
+    assert ordered[0] is left
+    assert ordered[1] is right
 
 
 def test_muscle_labels_from_landmarks():

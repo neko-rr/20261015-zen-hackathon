@@ -7,6 +7,8 @@ RUN apt-get update \
   && mkdir -p /app/app/models \
   && curl -fsSL -o /app/app/models/pose_landmarker_full.task \
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task" \
+  && curl -fsSL -o /app/app/models/hand_landmarker.task \
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" \
   && curl -fsSL -o /app/app/models/selfie_segmenter.tflite \
     "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite" \
   && apt-get purge -y curl \

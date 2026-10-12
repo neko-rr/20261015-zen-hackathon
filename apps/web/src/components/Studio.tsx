@@ -15,6 +15,7 @@ import {
   sourceHref,
   type ChatTurn,
   type Lookup,
+  type Mannequin,
   type PhotoObject,
   type PoseData,
   type Project,
@@ -26,17 +27,138 @@ import {
   kindCounts,
   type SourceChecklist,
 } from "@/lib/editorAssist";
-import { sanitizeLocale, text, type Locale } from "@/lib/messages";
+import { sanitizeLocale, text, type Locale, type MessageKey } from "@/lib/messages";
 import { sanitizeTheme, THEME_OPTIONS, type ThemeId } from "@/lib/themes";
 import { CompareSources } from "@/components/EditorSources";
-import { AnatomyViewer } from "@/components/AnatomyViewer";
+import { AnatomyViewer, type CameraId, type DollView } from "@/components/AnatomyViewer";
+import { MannequinLegend, MannequinOverlay } from "@/components/MannequinOverlay";
+import { PERSPECTIVE_IDS, PerspectiveGuide, type PerspectiveMode } from "@/components/PerspectiveGuide";
 import { buildFigure } from "@/lib/figure";
+import { buildGuides } from "@/lib/figureGuides";
+import { applyHandShape, HAND_IDS, type HandId } from "@/lib/handShape";
+import { applyBends, applyMirror, applyTwist, limitHingeBend } from "@/lib/mannequinPose";
+import { applyProportion, BUILD_IDS, HEAD_IDS, type BuildId, type HeadId } from "@/lib/proportions";
 
 const THEME_KEY = "drawref:themeId";
 const LOCALE_KEY = "drawref:locale";
 const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 type BodyView = "photo" | "mask" | "skeleton" | "muscle" | "view3d";
+type ComparePanel = { view: BodyView; camera: CameraId };
+
+const PANEL_LIMIT = 4;
+const CAMERA_IDS: CameraId[] = ["front", "threeQuarter", "side", "back"];
+const VIEW_IDS: BodyView[] = ["photo", "mask", "skeleton", "muscle", "view3d"];
+
+/** 増やすマスは、まだ無い角度の3D。同じ角度はあとから各マスで選べる。 */
+function addedPanel(existing: ComparePanel[]): ComparePanel {
+  const used = new Set(
+    existing.filter((panel) => panel.view === "view3d").map((panel) => panel.camera),
+  );
+  const camera = CAMERA_IDS.find((id) => !used.has(id)) ?? CAMERA_IDS[existing.length % CAMERA_IDS.length];
+  return { view: "view3d", camera };
+}
+
+function viewMessage(view: BodyView): MessageKey {
+  if (view === "mask") {
+    return "viewMask";
+  }
+  if (view === "skeleton") {
+    return "skeleton";
+  }
+  if (view === "muscle") {
+    return "muscle";
+  }
+  if (view === "view3d") {
+    return "view3d";
+  }
+  return "viewPhoto";
+}
+
+function cameraMessage(camera: CameraId): MessageKey {
+  if (camera === "threeQuarter") {
+    return "viewThreeQuarter";
+  }
+  if (camera === "side") {
+    return "viewSide";
+  }
+  if (camera === "back") {
+    return "viewBack";
+  }
+  return "viewFront";
+}
+
+function perspectiveMessage(mode: PerspectiveMode): MessageKey {
+  if (mode === "horizon") {
+    return "perspectiveHorizon";
+  }
+  if (mode === "one") {
+    return "perspectiveOne";
+  }
+  if (mode === "two") {
+    return "perspectiveTwo";
+  }
+  return "perspectiveOff";
+}
+
+function compareMessage(count: number): MessageKey {
+  if (count === 2) {
+    return "compare2";
+  }
+  if (count === 3) {
+    return "compare3";
+  }
+  if (count === 4) {
+    return "compare4";
+  }
+  return "compare1";
+}
+
+function headLabel(id: HeadId): MessageKey {
+  switch (id) {
+    case "9":
+      return "head9";
+    case "8":
+      return "head8";
+    case "7":
+      return "head7";
+    case "6":
+      return "head6";
+    case "5":
+      return "head5";
+    case "4":
+      return "head4";
+    default:
+      return "proportionPhoto";
+  }
+}
+
+function buildLabel(id: BuildId): MessageKey {
+  switch (id) {
+    case "slim":
+      return "buildSlim";
+    case "standard":
+      return "buildStandard";
+    case "sturdy":
+      return "buildSturdy";
+    case "broad_shoulder":
+      return "buildBroad";
+    case "wide_hip":
+      return "buildHip";
+    default:
+      return "buildPhoto";
+  }
+}
+
+function handLabel(id: HandId): MessageKey {
+  if (id === "open") {
+    return "handOpen";
+  }
+  if (id === "fist") {
+    return "handFist";
+  }
+  return "handNatural";
+}
 
 function kindKey(kind: string): "kindPerson" | "kindAnimal" | "kindObject" {
   if (kind === "person") {
@@ -54,6 +176,57 @@ function isLiving(kind: string): boolean {
 
 const EMPTY_POSE: PoseData = { landmarks: [], edges: [], muscles: [] };
 
+type Adjust = {
+  headCount: HeadId;
+  build: BuildId;
+  hand: HandId;
+  bends: Record<string, number>;
+  upperDeg: number;
+  lowerDeg: number;
+  mirrored: boolean;
+};
+
+const FRESH_ADJUST: Adjust = {
+  headCount: "photo",
+  build: "photo",
+  hand: "natural",
+  bends: {},
+  upperDeg: 0,
+  lowerDeg: 0,
+  mirrored: false,
+};
+
+type DollSource = { id: string; mannequin: Mannequin; tone: number };
+
+function dollSources(pose: PoseData, objects: PhotoObject[]): DollSource[] {
+  const people = pose.people ?? [];
+  const personObjects = objects.filter((item) => item.kind === "person");
+  const fromPeople = people.flatMap((person, index) => {
+    const mannequin = person.mannequin;
+    const id = person.object_id || personObjects[index]?.object_id || "";
+    if (!id || !mannequin?.joints.length) {
+      return [];
+    }
+    return [{ id, mannequin, tone: index % 4 }];
+  });
+  if (fromPeople.length) {
+    return fromPeople;
+  }
+  if (pose.mannequin?.joints.length) {
+    const id = personObjects[0]?.object_id ?? "obj_1";
+    return [{ id, mannequin: pose.mannequin, tone: 0 }];
+  }
+  return [];
+}
+
+function poseDoll(mannequin: Mannequin, adjust: Adjust): Mannequin {
+  const proportioned = applyProportion(mannequin, adjust.headCount, adjust.build);
+  const shaped = applyHandShape(proportioned, adjust.hand);
+  const bent = applyBends(shaped, adjust.bends);
+  const twisted = applyTwist(bent, (adjust.upperDeg * Math.PI) / 180, (adjust.lowerDeg * Math.PI) / 180);
+  return applyMirror(twisted, adjust.mirrored);
+}
+
 export function Studio() {
   const [locale, setLocale] = useState<Locale>("ja");
   const [themeId, setThemeId] = useState<ThemeId>("default");
@@ -64,9 +237,21 @@ export function Studio() {
   const [photoId, setPhotoId] = useState<string>("");
   const [objects, setObjects] = useState<PhotoObject[]>([]);
   const [pose, setPose] = useState<PoseData>(EMPTY_POSE);
+  const [adjusts, setAdjusts] = useState<Record<string, Adjust>>({});
+  const [editId, setEditId] = useState("");
+  const [showRuler, setShowRuler] = useState(true);
+  const [showBalance, setShowBalance] = useState(true);
+  const [dollOpacity, setDollOpacity] = useState(100);
+  const [perspective, setPerspective] = useState<PerspectiveMode>("off");
+  const [horizonY, setHorizonY] = useState(0.5);
+  const [vpOne, setVpOne] = useState(0.5);
+  const [vpLeft, setVpLeft] = useState(0.22);
+  const [vpRight, setVpRight] = useState(0.78);
+  const [photoFlip, setPhotoFlip] = useState(false);
+  const [grayscale, setGrayscale] = useState(false);
   const [selectedId, setSelectedId] = useState<string>("");
   const [step, setStep] = useState<"pick" | "detail">("pick");
-  const [bodyView, setBodyView] = useState<BodyView>("photo");
+  const [panels, setPanels] = useState<ComparePanel[]>([{ view: "photo", camera: "front" }]);
   const [busy, setBusy] = useState<"analyze" | "lookup" | "chat" | null>(null);
   const [error, setError] = useState<string>("");
   const [history, setHistory] = useState<Lookup[]>([]);
@@ -166,6 +351,105 @@ export function Studio() {
   }, [previewUrl]);
 
   const figure = useMemo(() => buildFigure(pose), [pose]);
+  const sources = useMemo(() => dollSources(pose, objects), [pose, objects]);
+  const activeId = sources.some((item) => item.id === editId) ? editId : (sources[0]?.id ?? "");
+  const activeAdjust = adjusts[activeId] ?? FRESH_ADJUST;
+  const figures = useMemo<DollView[]>(() => {
+    const ordered = [...sources].sort((a, b) => Number(a.id === activeId) - Number(b.id === activeId));
+    return ordered.map((source) => {
+      const adjust = adjusts[source.id] ?? FRESH_ADJUST;
+      return {
+        id: source.id,
+        mannequin: source.mannequin,
+        posed: poseDoll(source.mannequin, adjust),
+        tone: source.tone,
+        active: source.id === activeId,
+      };
+    });
+  }, [sources, adjusts, activeId]);
+  const activeFigure = figures.find((item) => item.active) ?? null;
+  const guides = useMemo(
+    () => buildGuides(activeFigure?.posed ?? { joints: [], bones: [], head: null }, activeAdjust.headCount, showRuler, showBalance),
+    [activeFigure, activeAdjust.headCount, showRuler, showBalance],
+  );
+  const showsDoll = panels.some(
+    (panel) => panel.view === "skeleton" || panel.view === "muscle" || panel.view === "view3d",
+  );
+  const showsFlatDoll = panels.some((panel) => panel.view === "skeleton" || panel.view === "muscle");
+
+  function setPanelCount(count: number) {
+    const nextCount = Math.min(PANEL_LIMIT, Math.max(1, count));
+    setPanels((prev) => {
+      if (nextCount === prev.length) {
+        return prev;
+      }
+      if (nextCount < prev.length) {
+        return prev.slice(0, nextCount);
+      }
+      const next = [...prev];
+      while (next.length < nextCount) {
+        next.push(addedPanel(next));
+      }
+      return next;
+    });
+  }
+
+  function updatePanel(index: number, patch: Partial<ComparePanel>) {
+    setPanels((prev) => prev.map((panel, item) => (item === index ? { ...panel, ...patch } : panel)));
+  }
+
+  function selectPerson(id: string) {
+    setSelectedId(id);
+    setEditId(id);
+  }
+
+  function patchAdjust(patch: Partial<Adjust>) {
+    if (!activeId) {
+      return;
+    }
+    setAdjusts((prev) => ({ ...prev, [activeId]: { ...(prev[activeId] ?? FRESH_ADJUST), ...patch } }));
+  }
+
+  function bendJoint(id: string, angle: number) {
+    const source = sources.find((item) => item.id === activeId);
+    if (!source) {
+      return;
+    }
+    setAdjusts((prev) => {
+      const current = prev[activeId] ?? FRESH_ADJUST;
+      const shaped = applyHandShape(
+        applyProportion(source.mannequin, current.headCount, current.build),
+        current.hand,
+      );
+      return {
+        ...prev,
+        [activeId]: {
+          ...current,
+          bends: { ...current.bends, [id]: limitHingeBend(shaped, current.bends, id, angle) },
+        },
+      };
+    });
+  }
+
+  function resetPose() {
+    patchAdjust({ bends: {}, upperDeg: 0, lowerDeg: 0, mirrored: false });
+  }
+
+  function changeHand(next: HandId) {
+    if (!activeId) {
+      return;
+    }
+    setAdjusts((prev) => {
+      const current = prev[activeId] ?? FRESH_ADJUST;
+      const kept: Record<string, number> = {};
+      for (const [id, value] of Object.entries(current.bends)) {
+        if (!/^[lr]_(thumb|index|middle|ring|pinky)_/.test(id)) {
+          kept[id] = value;
+        }
+      }
+      return { ...prev, [activeId]: { ...current, hand: next, bends: kept } };
+    });
+  }
 
   const selected = useMemo(
     () => objects.find((item) => item.object_id === selectedId) ?? null,
@@ -235,7 +519,16 @@ export function Studio() {
     setSelectedId("");
     setStep("pick");
     setPose(EMPTY_POSE);
-    setBodyView("photo");
+    setAdjusts({});
+    setEditId("");
+    setPanels([{ view: "photo", camera: "front" }]);
+    setPerspective("off");
+    setHorizonY(0.5);
+    setVpOne(0.5);
+    setVpLeft(0.22);
+    setVpRight(0.78);
+    setPhotoFlip(false);
+    setGrayscale(false);
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
@@ -252,7 +545,7 @@ export function Studio() {
           contour: item.contour ?? [],
         })),
       );
-      setBodyView("mask");
+      setPanels([{ view: "mask", camera: "front" }]);
       setStep("pick");
       setSelectedId("");
       await loadPersonalMeta();
@@ -376,128 +669,340 @@ export function Studio() {
             <span>{text(locale, "pickPhoto")}</span>
           </label>
           <p className="hint">{text(locale, "pickHint")}</p>
-          <div className="modes">
-            <button type="button" aria-pressed={bodyView === "photo"} onClick={() => setBodyView("photo")}>
-              {text(locale, "viewPhoto")}
-            </button>
-            <button type="button" aria-pressed={bodyView === "mask"} onClick={() => setBodyView("mask")}>
-              {text(locale, "viewMask")}
-            </button>
-            <button type="button" aria-pressed={bodyView === "skeleton"} onClick={() => setBodyView("skeleton")}>
-              {text(locale, "skeleton")}
-            </button>
-            <button type="button" aria-pressed={bodyView === "muscle"} onClick={() => setBodyView("muscle")}>
-              {text(locale, "muscle")}
-            </button>
-            <button type="button" aria-pressed={bodyView === "view3d"} onClick={() => setBodyView("view3d")}>
-              {text(locale, "view3d")}
-            </button>
+          <div className="modes" aria-label={text(locale, "compareCount")}>
+            {([1, 2, 3, 4] as const).map((count) => (
+              <button
+                key={count}
+                type="button"
+                aria-pressed={panels.length === count}
+                onClick={() => setPanelCount(count)}
+              >
+                {text(locale, compareMessage(count))}
+              </button>
+            ))}
           </div>
           {busy === "analyze" ? <p>{text(locale, "analyzing")}</p> : null}
-          {previewUrl && bodyView === "view3d" ? (
-            <AnatomyViewer
-              pose={pose}
-              hint={
-                pose.landmarks.length
-                  ? text(locale, "anatomyHint")
-                  : text(locale, "poseEmpty")
-              }
-              layerSkeleton={text(locale, "skeleton")}
-              layerMuscle={text(locale, "muscle")}
-            />
-          ) : null}
-          {previewUrl && bodyView !== "view3d" ? (
-            <div className="stage-wrap">
-              {/* blob URL は next/image に載せない */}
-              <img src={previewUrl} alt="" />
-              <div className="overlay">
-                {bodyView === "mask"
-                  ? objects.map((item) => {
-                      if (item.contour.length < 3) {
-                        return null;
-                      }
-                      if (step === "detail" && item.object_id !== selectedId) {
-                        return null;
-                      }
-                      return (
-                        <svg
-                          key={item.object_id}
-                          className={`contour${item.object_id === selectedId ? " is-selected" : ""}${
-                            item.is_primary ? " is-primary" : ""
-                          }`}
-                          viewBox="0 0 1 1"
-                          preserveAspectRatio="none"
-                        >
-                          <polygon
-                            points={item.contour.map((point) => `${point.x},${point.y}`).join(" ")}
-                            className="contour-hit"
-                            onClick={() => setSelectedId(item.object_id)}
-                          />
-                          <title>{item.label}</title>
-                        </svg>
-                      );
-                    })
-                  : null}
-                {bodyView === "skeleton" || bodyView === "muscle" ? (
-                  <svg className="contour pose-lines" viewBox="0 0 1 1" preserveAspectRatio="none">
-                    {figure.bones.map((edge) => (
-                      <line
-                        key={edge.id}
-                        x1={edge.x1}
-                        y1={edge.y1}
-                        x2={edge.x2}
-                        y2={edge.y2}
-                        className={`pose-bone pose-bone-${edge.part}${bodyView === "muscle" ? " is-muscle" : ""}`}
+          {(showsDoll && sources.length) || previewUrl ? (
+            <div className="doll-controls">
+              {sources.length > 1 ? <p className="hint">{text(locale, "multiPersonHint")}</p> : null}
+              {showsDoll && sources.length ? (
+              <fieldset className="doll-group">
+                <legend>{text(locale, "groupBody")}</legend>
+                <div className="proportion-row">
+                  <label className="proportion-field">
+                    <span>{text(locale, "proportion")}</span>
+                    <select
+                      value={activeAdjust.headCount}
+                      onChange={(event) => patchAdjust({ headCount: event.target.value as HeadId })}
+                    >
+                      {HEAD_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {text(locale, headLabel(id))}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="proportion-field">
+                    <span>{text(locale, "build")}</span>
+                    <select
+                      value={activeAdjust.build}
+                      onChange={(event) => patchAdjust({ build: event.target.value as BuildId })}
+                    >
+                      {BUILD_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {text(locale, buildLabel(id))}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="proportion-field">
+                    <span>{text(locale, "handShape")}</span>
+                    <select value={activeAdjust.hand} onChange={(event) => changeHand(event.target.value as HandId)}>
+                      {HAND_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {text(locale, handLabel(id))}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </fieldset>
+              ) : null}
+              <fieldset className="doll-group">
+                <legend>{text(locale, "groupGuides")}</legend>
+                <div className="guide-row">
+                  {showsDoll && sources.length ? (
+                    <>
+                      <button type="button" aria-pressed={showRuler} onClick={() => setShowRuler((value) => !value)}>
+                        {text(locale, "ruler")}
+                      </button>
+                      <button type="button" aria-pressed={showBalance} onClick={() => setShowBalance((value) => !value)}>
+                        {text(locale, "balance")}
+                      </button>
+                    </>
+                  ) : null}
+                  {showsFlatDoll ? (
+                    <label className="twist-field">
+                      <span>{text(locale, "dollOpacity")}</span>
+                      <input
+                        type="range"
+                        min={20}
+                        max={100}
+                        step={5}
+                        value={dollOpacity}
+                        aria-label={text(locale, "dollOpacity")}
+                        onChange={(event) => setDollOpacity(Number(event.target.value))}
                       />
-                    ))}
-                    {figure.joints.map((point, index) => (
-                      <circle
-                        key={`joint-${index}`}
-                        cx={point.x}
-                        cy={point.y}
-                        r={bodyView === "muscle" ? 0.012 : 0.007}
-                        className="pose-joint"
-                      />
-                    ))}
-                    {figure.head ? (
-                      <circle
-                        cx={figure.head.x}
-                        cy={figure.head.y}
-                        r={figure.head.radius}
-                        className="pose-head"
-                      />
-                    ) : null}
-                  </svg>
-                ) : null}
-                {bodyView === "muscle" && !figure.bones.length
-                  ? objects
-                      .filter((item) => isLiving(item.kind))
-                      .flatMap((item) => item.joints)
-                      .map((point) => (
-                        <span
-                          key={`fallback-${point.name}-${point.x}`}
-                          className="joint"
-                          style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-                          title={point.name}
-                        />
-                      ))
-                  : null}
-                {bodyView === "muscle"
-                  ? (pose.muscles.length
-                      ? pose.muscles
-                      : objects.flatMap((item) => (isLiving(item.kind) ? item.muscles : []))
-                    ).map((point) => (
-                      <span
-                        key={`muscle-${point.name}-${point.x}-${point.y}`}
-                        className="joint muscle"
-                        style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-                        title={point.name}
+                      <span>{dollOpacity}%</span>
+                    </label>
+                  ) : null}
+                  <button type="button" aria-pressed={photoFlip} onClick={() => setPhotoFlip((value) => !value)}>
+                    {text(locale, "photoFlip")}
+                  </button>
+                  <button type="button" aria-pressed={grayscale} onClick={() => setGrayscale((value) => !value)}>
+                    {text(locale, "grayscale")}
+                  </button>
+                  <div className="modes" aria-label={text(locale, "perspective")}>
+                    {PERSPECTIVE_IDS.map((id) => (
+                      <button
+                        key={id}
+                        type="button"
+                        aria-pressed={perspective === id}
+                        onClick={() => setPerspective(id)}
                       >
-                        <span>{point.name}</span>
-                      </span>
-                    ))
-                  : null}
-              </div>
+                        {text(locale, perspectiveMessage(id))}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </fieldset>
+              {showsDoll && sources.length ? (
+              <fieldset className="doll-group">
+                <legend>{text(locale, "groupFacing")}</legend>
+                <div className="guide-row">
+                  <button
+                    type="button"
+                    aria-pressed={activeAdjust.mirrored}
+                    onClick={() => patchAdjust({ mirrored: !activeAdjust.mirrored })}
+                  >
+                    {text(locale, "mirror")}
+                  </button>
+                  <label className="twist-field">
+                    <span>{text(locale, "twistUpper")}</span>
+                    <input
+                      type="range"
+                      min={-70}
+                      max={70}
+                      step={1}
+                      value={activeAdjust.upperDeg}
+                      aria-label={text(locale, "twistUpper")}
+                      onChange={(event) => patchAdjust({ upperDeg: Number(event.target.value) })}
+                    />
+                    <span>{activeAdjust.upperDeg}°</span>
+                  </label>
+                  <label className="twist-field">
+                    <span>{text(locale, "twistLower")}</span>
+                    <input
+                      type="range"
+                      min={-70}
+                      max={70}
+                      step={1}
+                      value={activeAdjust.lowerDeg}
+                      aria-label={text(locale, "twistLower")}
+                      onChange={(event) => patchAdjust({ lowerDeg: Number(event.target.value) })}
+                    />
+                    <span>{activeAdjust.lowerDeg}°</span>
+                  </label>
+                  <button type="button" onClick={resetPose}>
+                    {text(locale, "poseReset")}
+                  </button>
+                </div>
+              </fieldset>
+              ) : null}
+            </div>
+          ) : null}
+          {showsFlatDoll && sources.length ? (
+            <div className="mannequin-tools">
+              <MannequinLegend
+                observed={text(locale, "poseObserved")}
+                inferred={text(locale, "poseInferred")}
+              />
+            </div>
+          ) : null}
+          {showsFlatDoll && sources.length ? (
+            <p className="hint">{text(locale, "poseBendHint")}</p>
+          ) : null}
+          {previewUrl ? (
+            <div className={`view-grid is-${panels.length}`}>
+              {panels.map((panel, index) => (
+                <div className="compare-panel" key={index}>
+                  <div className="compare-panel-bar">
+                    <select
+                      aria-label={text(locale, "compareView")}
+                      value={panel.view}
+                      onChange={(event) => updatePanel(index, { view: event.target.value as BodyView })}
+                    >
+                      {VIEW_IDS.map((id) => (
+                        <option key={id} value={id}>
+                          {text(locale, viewMessage(id))}
+                        </option>
+                      ))}
+                    </select>
+                    {panel.view === "view3d" ? (
+                      <div className="modes" aria-label={text(locale, "compareCamera")}>
+                        {CAMERA_IDS.map((id) => (
+                          <button
+                            key={id}
+                            type="button"
+                            aria-pressed={panel.camera === id}
+                            onClick={() => updatePanel(index, { camera: id })}
+                          >
+                            {text(locale, cameraMessage(id))}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  {panel.view === "view3d" ? (
+                    <AnatomyViewer
+                      figures={figures}
+                      bends={activeAdjust.bends}
+                      onBend={bendJoint}
+                      onSelect={selectPerson}
+                      guides={guides}
+                      camera={panel.camera}
+                      photoFlip={photoFlip}
+                      hint={
+                        sources.length ? text(locale, "anatomyHint") : text(locale, "poseEmpty")
+                      }
+                      observedLabel={text(locale, "poseObserved")}
+                      inferredLabel={text(locale, "poseInferred")}
+                    />
+                  ) : (
+                    <div className={`stage-wrap${photoFlip ? " is-flipped" : ""}`}>
+                      {/* blob URL は next/image に載せない */}
+                      <img src={previewUrl} alt="" className={grayscale ? "is-gray" : undefined} />
+                      <div className="overlay">
+                        {panel.view === "mask"
+                          ? objects.map((item) => {
+                              if (item.contour.length < 3) {
+                                return null;
+                              }
+                              if (step === "detail" && item.object_id !== selectedId) {
+                                return null;
+                              }
+                              return (
+                                <svg
+                                  key={item.object_id}
+                                  className={`contour${item.object_id === selectedId ? " is-selected" : ""}${
+                                    item.is_primary ? " is-primary" : ""
+                                  }`}
+                                  viewBox="0 0 1 1"
+                                  preserveAspectRatio="none"
+                                >
+                                  <polygon
+                                    points={item.contour.map((point) => `${point.x},${point.y}`).join(" ")}
+                                    className="contour-hit"
+                                    onClick={() => setSelectedId(item.object_id)}
+                                  />
+                                  <title>{item.label}</title>
+                                </svg>
+                              );
+                            })
+                          : null}
+                        {panel.view === "skeleton" || panel.view === "muscle" ? (
+                          figures.length ? (
+                            figures.map((figure) => (
+                              <MannequinOverlay
+                                key={figure.id}
+                                mannequin={figure.posed}
+                                bends={figure.active ? activeAdjust.bends : {}}
+                                guides={figure.active ? guides : []}
+                                opacity={dollOpacity / 100}
+                                photoFlip={photoFlip}
+                                tone={figure.tone}
+                                active={figure.active}
+                                onBend={bendJoint}
+                                onSelect={() => selectPerson(figure.id)}
+                              />
+                            ))
+                          ) : (
+                            <svg className="contour pose-lines" viewBox="0 0 1 1" preserveAspectRatio="none">
+                              {figure.bones.map((edge) => (
+                                <line
+                                  key={edge.id}
+                                  x1={edge.x1}
+                                  y1={edge.y1}
+                                  x2={edge.x2}
+                                  y2={edge.y2}
+                                  className={`pose-bone pose-bone-${edge.part}${panel.view === "muscle" ? " is-muscle" : ""}`}
+                                />
+                              ))}
+                              {figure.joints.map((point, pointIndex) => (
+                                <circle
+                                  key={`joint-${pointIndex}`}
+                                  cx={point.x}
+                                  cy={point.y}
+                                  r={panel.view === "muscle" ? 0.012 : 0.007}
+                                  className="pose-joint"
+                                />
+                              ))}
+                              {figure.head ? (
+                                <circle
+                                  cx={figure.head.x}
+                                  cy={figure.head.y}
+                                  r={figure.head.radius}
+                                  className="pose-head"
+                                />
+                              ) : null}
+                            </svg>
+                          )
+                        ) : null}
+                        {panel.view === "muscle" && !figure.bones.length
+                          ? objects
+                              .filter((item) => isLiving(item.kind))
+                              .flatMap((item) => item.joints)
+                              .map((point) => (
+                                <span
+                                  key={`fallback-${point.name}-${point.x}`}
+                                  className="joint"
+                                  style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+                                  title={point.name}
+                                />
+                              ))
+                          : null}
+                        {panel.view === "muscle"
+                          ? (pose.muscles.length
+                              ? pose.muscles
+                              : objects.flatMap((item) => (isLiving(item.kind) ? item.muscles : []))
+                            ).map((point) => (
+                              <span
+                                key={`muscle-${point.name}-${point.x}-${point.y}`}
+                                className="joint muscle"
+                                style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+                                title={point.name}
+                              >
+                                <span>{point.name}</span>
+                              </span>
+                            ))
+                          : null}
+                        <PerspectiveGuide
+                          mode={perspective}
+                          horizonY={horizonY}
+                          vpOne={vpOne}
+                          vpLeft={vpLeft}
+                          vpRight={vpRight}
+                          onHorizon={setHorizonY}
+                          onVpOne={setVpOne}
+                          onVpLeft={setVpLeft}
+                          onVpRight={setVpRight}
+                          photoFlip={photoFlip}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           ) : null}
         </section>
@@ -512,8 +1017,18 @@ export function Studio() {
                   type="button"
                   className="row"
                   aria-pressed={item.object_id === selectedId}
-                  onClick={() => setSelectedId(item.object_id)}
+                  onClick={() => {
+                    setSelectedId(item.object_id);
+                    if (item.kind === "person" && item.joints.length) {
+                      setEditId(item.object_id);
+                    }
+                  }}
                 >
+                  {item.kind === "person" && item.joints.length ? (
+                    <i
+                      className={`swatch tone-${sources.find((doll) => doll.id === item.object_id)?.tone ?? 0}`}
+                    />
+                  ) : null}
                   {item.label}
                   {item.is_primary ? <span className="badge">{text(locale, "primary")}</span> : null}
                   <span className="badge">{text(locale, kindKey(item.kind))}</span>
@@ -654,13 +1169,14 @@ export function Studio() {
                   <h3>{text(locale, "summary")}</h3>
                   <p>{item.summary}</p>
                   <h3>{text(locale, "sources")}</h3>
+                  <p className="hint">{text(locale, "similarNote")}</p>
                   <CompareSources
                     locale={locale}
                     sources={item.sources}
                     viewedAt={item.viewed_at}
                     checks={checks}
                     onCheck={setSourceCheck}
-                    showFacts={false}
+                    showFacts
                     favorites={favorites}
                     onToggleFavorite={toggleFavorite}
                     notes={notes}

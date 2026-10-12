@@ -105,10 +105,11 @@ _MODEL_CANDIDATES = [
 
 _detector = None
 _detector_failed = False
+MAX_POSES = 4
 
 
 def empty_pose() -> dict[str, Any]:
-    return {"landmarks": [], "edges": [], "muscles": []}
+    return {"landmarks": [], "edges": [], "muscles": [], "people": []}
 
 
 def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
@@ -136,7 +137,26 @@ def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
     if not result.pose_landmarks:
         return empty_pose()
 
-    raw = result.pose_landmarks[0]
+    people = order_people([_one_pose(raw) for raw in result.pose_landmarks[:MAX_POSES]])
+    people = [item for item in people if item["landmarks"]]
+    if not people:
+        return empty_pose()
+    first = people[0]
+    logger.info("pose people=%s landmarks=%s", len(people), len(first["landmarks"]))
+    return {
+        "landmarks": first["landmarks"],
+        "edges": first["edges"],
+        "muscles": first["muscles"],
+        "people": people,
+    }
+
+
+def order_people(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """左から右。肩の中点、無ければ関節の平均。"""
+    return sorted(people, key=_anchor_x)
+
+
+def _one_pose(raw: Any) -> dict[str, Any]:
     landmarks: list[dict[str, float | str]] = []
     for index, point in enumerate(raw):
         name = _LANDMARK_NAMES[index] if index < len(_LANDMARK_NAMES) else f"pt_{index}"
@@ -153,7 +173,6 @@ def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
                 "visibility": visibility,
             }
         )
-
     by_index = {int(item["index"]): item for item in landmarks}
     edges: list[dict[str, float | int]] = []
     for start, end in POSE_EDGES:
@@ -171,10 +190,17 @@ def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
                 "y2": b["y"],
             }
         )
+    return {"landmarks": landmarks, "edges": edges, "muscles": _muscle_labels(by_index)}
 
-    muscles = _muscle_labels(by_index)
-    logger.info("pose landmarks=%s edges=%s muscles=%s", len(landmarks), len(edges), len(muscles))
-    return {"landmarks": landmarks, "edges": edges, "muscles": muscles}
+
+def _anchor_x(person: dict[str, Any]) -> float:
+    landmarks = person.get("landmarks") or []
+    by_index = {int(item["index"]): item for item in landmarks if "index" in item}
+    if 11 in by_index and 12 in by_index:
+        return (float(by_index[11]["x"]) + float(by_index[12]["x"])) / 2
+    if not landmarks:
+        return 0.0
+    return sum(float(item["x"]) for item in landmarks) / len(landmarks)
 
 
 def _muscle_labels(by_index: dict[int, dict[str, float | str | int]]) -> list[dict[str, float | str]]:
@@ -254,7 +280,7 @@ def _get_detector() -> Any:
         options = PoseLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=str(model_path)),
             running_mode=RunningMode.IMAGE,
-            num_poses=1,
+            num_poses=MAX_POSES,
             min_pose_detection_confidence=0.5,
             min_pose_presence_confidence=0.5,
         )

@@ -7,11 +7,9 @@ from app.errors import system_error
 from app.editor_assist import enrich_turn
 from app.rag import index_as_chunks, retrieve
 from app.settings import Settings
-from app.verify import verify_sources
+from app.verify import quoted_rights, verify_sources
 
 logger = logging.getLogger(__name__)
-
-_MAX_LINKS = 4
 
 
 def lookup_object(
@@ -21,11 +19,11 @@ def lookup_object(
     tags: list[str] | None = None,
     project_id: str = "",
 ) -> dict[str, Any]:
-    """画像から選んだ物体の自動検索。まとめと出典 URL。手元資料も付ける。"""
+    """選んだ呼び方で検索する。権利は出典本文の引用だけ。手元資料も付ける。"""
     summary, chunks, suggestions = _search(settings, _summary_prompt(label))
-    web_sources = _links(chunks)
-    for item in web_sources:
-        item["material_kind"] = "web"
+    for chunk in chunks:
+        chunk["material_kind"] = "web"
+    web_sources = quoted_rights(chunks)
     rag_query = _rag_query(label, "", tags)
     rag_hits = (
         retrieve(owner_id, rag_query, limit=4, project_id=project_id) if owner_id else []
@@ -106,7 +104,8 @@ def _rag_query(label: str, message: str, tags: list[str] | None) -> str:
 
 def _summary_prompt(label: str) -> str:
     return (
-        f"絵の資料として「{label}」を短く説明してください。"
+        f"絵の資料として「{label}」そのものを短く説明してください。"
+        "この呼び方より広い語には広げないこと。"
         "説明は検索結果に基づくこと。ライセンス、作成時期、著作権は書かないこと。"
         "本のダウンロードはしないこと。"
     )
@@ -148,20 +147,6 @@ def _search(settings: Settings, prompt: str) -> tuple[str, list[dict[str, str]],
 
     summary = (grounded.text or "").strip()
     return summary, _chunk_records(grounded), _suggestions_html(grounded)
-
-
-def _links(chunks: list[dict[str, str]]) -> list[dict[str, str]]:
-    seen: set[str] = set()
-    links: list[dict[str, str]] = []
-    for chunk in chunks:
-        url = chunk.get("url", "").strip()
-        if not url or url in seen:
-            continue
-        seen.add(url)
-        if len(links) >= _MAX_LINKS:
-            break
-        links.append({"url": url, "title": chunk.get("title", "")})
-    return links
 
 
 def _merge_unique(

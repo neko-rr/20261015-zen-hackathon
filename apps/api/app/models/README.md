@@ -3,6 +3,7 @@
 Docker ビルド時に次を取得する。
 
 - `pose_landmarker_full.task`（無ければ lite でも姿勢は動く）
+- `hand_landmarker.task`（指。無いときは指を補完）
 - `selfie_segmenter.tflite`（人の輪郭）
 
 ローカル:

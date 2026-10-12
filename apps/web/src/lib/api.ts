@@ -36,10 +36,60 @@ export type PoseEdge = {
   y2: number;
 };
 
-export type PoseData = {
+export type MannequinJoint = {
+  id: string;
+  parent: string | null;
+  x: number;
+  y: number;
+  z: number;
+  inferred: boolean;
+  hinge: [number, number, number];
+};
+
+export type MannequinBone = {
+  id: string;
+  start: string;
+  end: string;
+  part: string;
+  inferred: boolean;
+  radius: number;
+};
+
+export type MannequinHead = {
+  joint_id: string;
+  radius: number;
+  inferred: boolean;
+};
+
+export type Mannequin = {
+  joints: MannequinJoint[];
+  bones: MannequinBone[];
+  head: MannequinHead | null;
+  aspect?: number;
+};
+
+export type HandDetection = {
+  side: string;
+  score: number;
+  landmarks: Array<{ index: number; x: number; y: number; z: number }>;
+};
+
+export type PosePerson = {
+  object_id?: string;
   landmarks: PoseLandmark[];
   edges: PoseEdge[];
   muscles: Joint[];
+  hands?: HandDetection[];
+  mannequin?: Mannequin;
+};
+
+export type PoseData = {
+  landmarks: PoseLandmark[];
+  edges: PoseEdge[];
+  muscles: Array<Joint & { person_index?: number }>;
+  hands?: HandDetection[];
+  mannequin?: Mannequin;
+  people?: PosePerson[];
 };
 
 export type PhotoObject = {
