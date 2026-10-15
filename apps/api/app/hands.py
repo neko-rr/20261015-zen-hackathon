@@ -20,9 +20,9 @@ def empty_hands() -> list[dict[str, Any]]:
     return []
 
 
-def estimate_hands(image: bytes, mime_type: str) -> list[dict[str, Any]]:
-    """写っている手。モデルが無い、手が無いときは空リスト。"""
-    if not image or not mime_type:
+def estimate_hands(image: bytes, mime_type: str, pixels: Any | None = None) -> list[dict[str, Any]]:
+    """写っている手。モデルが無い、手が無いときは空リスト。pixels があれば再デコードしない。"""
+    if (not image and pixels is None) or not mime_type:
         return empty_hands()
     detector = _get_detector()
     if detector is None:
@@ -35,7 +35,8 @@ def estimate_hands(image: bytes, mime_type: str) -> list[dict[str, Any]]:
         return empty_hands()
 
     try:
-        pixels = _decode_pixels(image)
+        if pixels is None:
+            pixels = _decode_pixels(image)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=pixels)
         result = detector.detect(mp_image)
     except Exception:
@@ -65,6 +66,11 @@ def estimate_hands(image: bytes, mime_type: str) -> list[dict[str, Any]]:
         found.append({"side": label, "score": score, "landmarks": points})
     logger.info("hands count=%s", len(found))
     return found
+
+
+def warm() -> None:
+    """起動時にモデルを読む。失敗しても解析は続けられる。"""
+    _get_detector()
 
 
 def _get_detector() -> Any:

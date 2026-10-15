@@ -1,4 +1,4 @@
-/** oshi-app のテーマ ID。表示はブラウザ内だけ。サーバーには送らない。 */
+/** テーマ ID。ログイン中はアカウントの設定として保存する。 */
 
 export const DEFAULT_THEME_ID = "default";
 

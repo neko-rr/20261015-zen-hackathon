@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 import type { Mannequin } from "@/lib/api";
 import type { GuideLine } from "@/lib/figureGuides";
 import { clampBend } from "@/lib/mannequinPose";
+import {
+  applyMixamoPose,
+  cloneDoll,
+  disposeDoll,
+  loadDollTemplate,
+  markerPosition,
+  prepareRig,
+  type DollBodyId,
+  type MixamoRig,
+} from "@/lib/mixamoBody";
 import { MannequinLegend } from "@/components/MannequinOverlay";
 
 type ViewLabels = {
@@ -37,6 +47,9 @@ type Props = {
   bends: Record<string, number>;
   onBend: (id: string, angle: number) => void;
   onSelect: (id: string) => void;
+  bodyId: DollBodyId;
+  bodyLoading: string;
+  bodyFailed: string;
 };
 
 const CAMERA_VIEWS: Record<keyof ViewLabels, [number, number, number]> = {
@@ -65,33 +78,93 @@ function paintActive(mesh: THREE.Mesh, active: boolean) {
 }
 const DRAG_PER_PIXEL = 0.012;
 
+/** MediaPipe の z は手前ほど小さい。3D のカメラは +Z なので符号を反転する。 */
 function toVec3(x: number, y: number, z: number, aspect: number): THREE.Vector3 {
   const width = aspect > 0 ? aspect : 1;
-  return new THREE.Vector3((x - width / 2) * 2, -(y - 0.5) * 2, z * 2);
+  return new THREE.Vector3((x - width / 2) * 2, -(y - 0.5) * 2, -z * 2);
 }
 
-const TAPER: Record<string, [number, number]> = {
-  upper_arm: [1.08, 0.76],
-  forearm: [0.84, 0.62],
-  thigh: [1.14, 0.76],
-  shin: [0.82, 0.56],
-  neck: [0.58, 0.82],
+const FLESH: Record<string, number[]> = {
+  upper_arm: [0.95, 1.2, 1.35, 1.05, 0.78],
+  forearm: [0.78, 0.72, 0.64, 0.52],
+  thigh: [1.15, 1.45, 1.4, 1.05, 0.78],
+  shin: [0.78, 0.7, 0.58, 0.46],
+  neck: [0.72, 0.58, 0.66],
 };
+
+const DRAG_JOINTS = new Set([
+  "shoulder_l",
+  "shoulder_r",
+  "elbow_l",
+  "elbow_r",
+  "wrist_l",
+  "wrist_r",
+  "hip_l",
+  "hip_r",
+  "knee_l",
+  "knee_r",
+  "ankle_l",
+  "ankle_r",
+]);
 
 function shapeFor(part: string, id: string): string {
   if (part === "clavicle") {
-    return "skip";
+    return "shoulder";
   }
   if (part === "foot") {
     return "foot";
   }
-  if (part === "torso" || part === "pelvis") {
-    return "block";
+  if (part === "torso") {
+    return "chest";
+  }
+  if (part === "pelvis") {
+    return "hip";
   }
   if (part === "finger" || part === "thumb") {
     return /_(index|middle|ring|pinky)_1$/.test(id) ? "palm" : "finger";
   }
-  return "limb";
+  return "flesh";
+}
+
+/** 断面を積んで、胴や腰のボリュームにする。ローカル Y が長さ。 */
+function createLoft(rings: { y: number; w: number; d: number }[]): THREE.BufferGeometry {
+  const sides = 10;
+  const rows = rings.map((ring) => {
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i < sides; i += 1) {
+      const angle = (i / sides) * Math.PI * 2;
+      pts.push([(Math.cos(angle) * ring.w) / 2, ring.y, (Math.sin(angle) * ring.d) / 2]);
+    }
+    return pts;
+  });
+  const positions: number[] = [];
+  const push = (p: [number, number, number]) => positions.push(p[0], p[1], p[2]);
+  for (let row = 0; row < rows.length - 1; row += 1) {
+    for (let i = 0; i < sides; i += 1) {
+      const next = (i + 1) % sides;
+      const a = rows[row][i];
+      const b = rows[row][next];
+      const c = rows[row + 1][next];
+      const d = rows[row + 1][i];
+      push(a);
+      push(b);
+      push(c);
+      push(a);
+      push(c);
+      push(d);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createFlesh(profile: number[]): THREE.BufferGeometry {
+  const points = profile.map(
+    (radius, index) => new THREE.Vector2(Math.max(radius, 0.05), -0.5 + index / (profile.length - 1)),
+  );
+  return new THREE.LatheGeometry(points, 14);
 }
 
 function drawGuides(group: THREE.Group, lines: GuideLine[], aspect: number) {
@@ -167,10 +240,6 @@ function lookFrom(
   rig.camera.position.set(flipped ? -x : x, y, z);
   rig.controls.target.set(0, 0.1, 0);
   rig.controls.update();
-}
-
-function isFingerJoint(id: string): boolean {
-  return /^[lr]_(thumb|index|middle|ring|pinky)_/.test(id);
 }
 
 /** 足の甲。足首側が高く、爪先側が低い楔。ローカル Y が長さ。 */
@@ -254,9 +323,16 @@ export function AnatomyViewer({
   camera: cameraId,
   guides,
   photoFlip,
+  bodyId,
+  bodyLoading,
+  bodyFailed,
 }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const sceneRef = useRef<SceneApi | null>(null);
+  const sceneObjRef = useRef<THREE.Scene | null>(null);
+  const liveRef = useRef<{ id: string; rig: MixamoRig }[]>([]);
+  const [bodyNote, setBodyNote] = useState<"loading" | "ready" | "error">("loading");
+  const [mixamoEpoch, setMixamoEpoch] = useState(0);
   const rigRef = useRef<{ camera: THREE.PerspectiveCamera; controls: OrbitControls } | null>(null);
   const bendsRef = useRef(bends);
   const onBendRef = useRef(onBend);
@@ -322,13 +398,23 @@ export function AnatomyViewer({
       if (shape === "skip") {
         continue;
       }
-      const taper = TAPER[bone.part] ?? [1, 0.82];
       const geometry =
         shape === "foot"
           ? createFootWedge()
-          : shape === "block" || shape === "finger" || shape === "palm"
-            ? new THREE.BoxGeometry(1, 1, 1)
-            : new THREE.CylinderGeometry(taper[0], taper[1], 1, 14);
+          : shape === "chest"
+            ? createLoft([
+                { y: -0.5, w: 0.62, d: 0.46 },
+                { y: 0.05, w: 0.78, d: 0.52 },
+                { y: 0.5, w: 1, d: 0.62 },
+              ])
+            : shape === "hip"
+              ? createLoft([
+                  { y: -0.5, w: 0.55, d: 0.5 },
+                  { y: 0.5, w: 1, d: 0.82 },
+                ])
+              : shape === "finger" || shape === "palm" || shape === "shoulder"
+                ? new THREE.BoxGeometry(1, 1, 1)
+                : createFlesh(FLESH[bone.part] ?? [0.7, 0.62, 0.5]);
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData.radius = Math.max(bone.radius * 2, 0.02);
       mesh.userData.shape = shape;
@@ -343,7 +429,7 @@ export function AnatomyViewer({
     }
 
     for (const joint of figure.mannequin.joints) {
-      if (!joint.parent || isFingerJoint(joint.id) || joint.id === "foot_l" || joint.id === "foot_r") {
+      if (!DRAG_JOINTS.has(joint.id)) {
         continue;
       }
       const material = new THREE.MeshStandardMaterial({
@@ -385,6 +471,7 @@ export function AnatomyViewer({
     const guidesGroup = new THREE.Group();
     scene.add(guidesGroup);
     sceneRef.current = { bones, joints, heads, guides: guidesGroup };
+    sceneObjRef.current = scene;
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -454,6 +541,7 @@ export function AnatomyViewer({
     return () => {
       clearGuideGroup(guidesGroup);
       rigRef.current = null;
+      sceneObjRef.current = null;
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", onResize);
       renderer.domElement.removeEventListener("pointerdown", onPointerDown, true);
@@ -485,6 +573,72 @@ export function AnatomyViewer({
   }, [structureKey]);
 
   useEffect(() => {
+    const scene = sceneObjRef.current;
+    if (!scene) {
+      return;
+    }
+    let cancelled = false;
+    let dropped = false;
+    const holder = new THREE.Group();
+    holder.name = "mixamo-dolls";
+    const drop = () => {
+      if (dropped) {
+        return;
+      }
+      dropped = true;
+      holder.removeFromParent();
+      disposeDoll(holder);
+      liveRef.current = [];
+    };
+    setBodyNote("loading");
+    loadDollTemplate(bodyId)
+      .then(async (template) => {
+        if (cancelled) {
+          return;
+        }
+        const next: { id: string; rig: MixamoRig }[] = [];
+        for (const figure of figuresRef.current) {
+          if (!figure.mannequin.joints.length || cancelled) {
+            continue;
+          }
+          const copy = await cloneDoll(template);
+          if (cancelled) {
+            disposeDoll(copy);
+            continue;
+          }
+          const rig = prepareRig(copy, figure.mannequin);
+          if (!rig) {
+            disposeDoll(copy);
+            continue;
+          }
+          holder.add(copy);
+          next.push({ id: figure.id, rig });
+        }
+        if (cancelled || !next.length) {
+          drop();
+          if (!cancelled) {
+            setBodyNote("error");
+          }
+          return;
+        }
+        scene.add(holder);
+        liveRef.current = next;
+        setBodyNote("ready");
+        setMixamoEpoch((value) => value + 1);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          drop();
+          setBodyNote("error");
+        }
+      });
+    return () => {
+      cancelled = true;
+      drop();
+    };
+  }, [bodyId, structureKey]);
+
+  useEffect(() => {
     lookFrom(rigRef.current, cameraId, photoFlipRef.current);
   }, [cameraId]);
 
@@ -506,10 +660,46 @@ export function AnatomyViewer({
     if (!api) {
       return;
     }
+    const mixamoOn = liveRef.current.length > 0;
+    for (const mesh of api.bones.values()) {
+      mesh.visible = !mixamoOn;
+    }
+    for (const mesh of api.heads.values()) {
+      mesh.visible = !mixamoOn;
+    }
+    const marker = new THREE.Vector3();
     for (const figure of figures) {
     const posed = figure.posed;
     const points = new Map(posed.joints.map((joint) => [joint.id, joint]));
     const aspect = posed.aspect && posed.aspect > 0 ? posed.aspect : 1;
+    const rig = liveRef.current.find((item) => item.id === figure.id)?.rig;
+    if (rig) {
+      applyMixamoPose(rig, figure.mannequin, posed, figure.active);
+    }
+    if (mixamoOn) {
+      for (const joint of posed.joints) {
+        const mesh = api.joints.get(`${figure.id}:${joint.id}`);
+        if (!mesh) {
+          continue;
+        }
+        const hit = Math.max((posed.head?.radius ?? 0.05) * 0.42, 0.02);
+        mesh.scale.setScalar(hit);
+        if (!rig || !markerPosition(rig, joint.id, marker)) {
+          const point = points.get(joint.id);
+          if (!point) {
+            continue;
+          }
+          mesh.position.copy(toVec3(point.x, point.y, point.z, aspect));
+        } else {
+          mesh.position.copy(marker);
+        }
+        paintActive(mesh, figure.active);
+      }
+      if (figure.active) {
+        drawGuides(api.guides, guides, aspect);
+      }
+      continue;
+    }
     for (const bone of posed.bones) {
       const mesh = api.bones.get(`${figure.id}:${bone.id}`);
       const start = points.get(bone.start);
@@ -521,23 +711,26 @@ export function AnatomyViewer({
       const b = toVec3(end.x, end.y, end.z, aspect);
       const direction = new THREE.Vector3().subVectors(b, a);
       const length = Math.max(direction.length(), 0.01);
-      const radius = Number(mesh.userData.radius) || 0.03;
-      const shape = String(mesh.userData.shape || "limb");
-      const part = String(mesh.userData.part || "");
+      const radius = Math.max(bone.radius * 2, 0.02);
+      const shape = String(mesh.userData.shape || "flesh");
       if (shape === "foot") {
-        mesh.scale.set(Math.max(length * 0.42, 0.06), length, Math.max(length * 0.34, 0.045));
+        mesh.scale.set(Math.max(length * 0.55, 0.08), length, Math.max(length * 0.42, 0.06));
       } else if (shape === "palm") {
-        const side = Math.max(radius * 0.5, 0.016);
-        mesh.scale.set(side * 2.2, Math.max(length * 0.94, side * 1.3), side * 0.62);
+        const side = Math.max(radius * 0.7, 0.02);
+        mesh.scale.set(side * 2.4, Math.max(length * 0.94, side * 1.3), side * 0.7);
       } else if (shape === "finger") {
-        const side = Math.max(radius * 0.7, 0.012);
-        mesh.scale.set(side, Math.max(length * 0.92, side * 1.8), side * 0.55);
-      } else if (shape === "block") {
-        const wide = part === "torso" ? radius * 2.35 : radius * 1.65;
-        const deep = part === "torso" ? radius * 1.2 : radius * 1.05;
-        mesh.scale.set(wide, Math.max(length * 0.96, wide * 0.28), deep);
+        const side = Math.max(radius * 0.85, 0.014);
+        mesh.scale.set(side, Math.max(length * 0.92, side * 1.8), side * 0.6);
+      } else if (shape === "chest") {
+        const wide = Math.max(radius * 3.1, length * 0.9);
+        mesh.scale.set(wide, Math.max(length * 1.05, wide * 0.42), Math.max(radius * 1.7, length * 0.55));
+      } else if (shape === "hip") {
+        const wide = Math.max(radius * 2.4, length * 0.85);
+        mesh.scale.set(wide, Math.max(length * 1.15, wide * 0.35), Math.max(radius * 1.8, length * 0.7));
+      } else if (shape === "shoulder") {
+        mesh.scale.set(Math.max(radius * 0.9, 0.04), length, Math.max(radius * 1.6, 0.05));
       } else {
-        mesh.scale.set(radius, length, radius);
+        mesh.scale.set(radius * 1.15, length, radius * 1.15);
       }
       mesh.position.copy(a).add(b).multiplyScalar(0.5);
       const left = points.get("shoulder_l");
@@ -546,7 +739,7 @@ export function AnatomyViewer({
         bone.id === "torso" && left && right
           ? toVec3(right.x, right.y, right.z, aspect).sub(toVec3(left.x, left.y, left.z, aspect))
           : undefined;
-      orientMesh(mesh, direction, shape !== "limb", shoulder);
+      orientMesh(mesh, direction, shape !== "flesh", shoulder);
       paintActive(mesh, figure.active);
     }
     for (const joint of posed.joints) {
@@ -558,7 +751,7 @@ export function AnatomyViewer({
       if (!point) {
         continue;
       }
-      const hit = Number(mesh.userData.hit) || 0.04;
+      const hit = Math.max((posed.head?.radius ?? 0.05) * 0.42, 0.02);
       mesh.scale.setScalar(hit);
       mesh.position.copy(toVec3(point.x, point.y, point.z, aspect));
       paintActive(mesh, figure.active);
@@ -567,7 +760,7 @@ export function AnatomyViewer({
     if (head && posed.head) {
       const point = points.get(posed.head.joint_id);
       if (point) {
-        const radius = Number(head.userData.radius) || 0.12;
+        const radius = Math.max(posed.head.radius * 2, 0.08);
         head.scale.setScalar(radius);
         head.position.copy(toVec3(point.x, point.y, point.z, aspect));
         paintActive(head, figure.active);
@@ -577,7 +770,7 @@ export function AnatomyViewer({
       drawGuides(api.guides, guides, aspect);
     }
     }
-  }, [figures, guides]);
+  }, [figures, guides, mixamoEpoch]);
 
   if (!figures.some((figure) => figure.mannequin.joints.length)) {
     return <p className="hint">{hint}</p>;
@@ -589,6 +782,8 @@ export function AnatomyViewer({
         <MannequinLegend observed={observedLabel} inferred={inferredLabel} />
       </div>
       <p className="hint">{hint}</p>
+      {bodyNote === "loading" ? <p className="hint">{bodyLoading}</p> : null}
+      {bodyNote === "error" ? <p className="hint">{bodyFailed}</p> : null}
       <div ref={hostRef} className="anatomy-canvas" />
     </div>
   );

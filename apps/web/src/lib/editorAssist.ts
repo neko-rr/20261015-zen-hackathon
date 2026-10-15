@@ -53,6 +53,7 @@ export function creditMemo(
     url?: string;
     material_kind?: MaterialKind;
     license?: string;
+    rights_code?: string;
     credit_memo?: string;
   },
   viewedAt = "",
@@ -64,12 +65,14 @@ export function creditMemo(
   const url = source.url?.trim() || "(URLなし)";
   const kind = source.material_kind || "web";
   const license = source.license?.trim() || "unknown";
+  const rightsCode = source.rights_code?.trim();
   const when = viewedAt.trim() || new Date().toISOString();
   return [
     `タイトル: ${title}`,
     `URL: ${url}`,
     `種別: ${KIND_JA[kind] || kind}`,
     `ライセンス: ${license}`,
+    ...(rightsCode ? [`権利コード: ${rightsCode}`] : []),
     `取得日: ${when}`,
   ].join("\n");
 }
@@ -172,6 +175,12 @@ export function buildExportMarkdown(
       lines.push("");
       lines.push(turn.answer || "");
       lines.push("");
+      for (const row of turn.memory ?? []) {
+        lines.push(`記録: ${row.project_name} / ${row.title}`);
+      }
+      if (turn.memory?.length) {
+        lines.push("");
+      }
       for (const source of turn.sources) {
         lines.push(..._sourceBlock(source, turn.viewed_at, checks, notes));
       }

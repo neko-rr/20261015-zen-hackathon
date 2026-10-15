@@ -1,5 +1,7 @@
 """手元資料の登録と隔離。"""
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -9,7 +11,10 @@ client = TestClient(app)
 
 def _session() -> TestClient:
     started = TestClient(app)
-    response = started.post("/sessions")
+    response = started.post(
+        "/accounts",
+        json={"username": f"m{uuid4().hex[:12]}", "password": "long-password"},
+    )
     assert response.status_code == 200
     return started
 

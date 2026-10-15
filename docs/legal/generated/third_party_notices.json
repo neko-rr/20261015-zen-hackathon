@@ -1,0 +1,167 @@
+{
+  "generated_at": "2026-10-15T02:52:56Z",
+  "app_notice_ja": "このリポジトリのソースは All Rights Reserved（直下の LICENSE）です。このページは、画面と API が直接依存するオープンソースと、外部サービスの表示メモです。",
+  "packages": [
+    {
+      "name": "next",
+      "version": "16.4.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "homepage": "https://nextjs.org"
+    },
+    {
+      "name": "react",
+      "version": "19.3.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "homepage": "https://react.dev/"
+    },
+    {
+      "name": "react-dom",
+      "version": "19.3.0",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "homepage": "https://react.dev/"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "license": "MIT",
+      "ecosystem": "npm",
+      "homepage": "https://threejs.org/"
+    },
+    {
+      "name": "fastapi",
+      "version": "0.143.0",
+      "license": "MIT",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "google-auth",
+      "version": "2.61.0",
+      "license": "Apache 2.0",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "google-genai",
+      "version": "2.29.0",
+      "license": "Apache-2.0",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "mediapipe",
+      "version": "1.1.0",
+      "license": "Apache 2.0",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "openpyxl",
+      "version": "3.1.5",
+      "license": "MIT",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "Pillow",
+      "version": "12.3.0",
+      "license": "MIT-CMU",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "pydantic",
+      "version": "2.14.1",
+      "license": "MIT",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "pypdf",
+      "version": "6.20.0",
+      "license": "BSD-3-Clause",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "python-docx",
+      "version": "1.2.0",
+      "license": "MIT",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "python-dotenv",
+      "version": "1.2.4",
+      "license": "BSD-3-Clause",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "python-multipart",
+      "version": "0.0.32",
+      "license": "Apache-2.0",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "typesafe-sdk",
+      "version": "0.7.4",
+      "license": "MIT",
+      "ecosystem": "pip",
+      "homepage": ""
+    },
+    {
+      "name": "uvicorn",
+      "version": "0.54.0",
+      "license": "BSD-3-Clause",
+      "ecosystem": "pip",
+      "homepage": ""
+    }
+  ],
+  "services": [
+    {
+      "id": "gemini",
+      "name_ja": "Gemini（Google Cloud）",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "写真の呼び方、出典検索、言葉から関節の角度に使う。呼び出しは API サーバーだけ。ブラウザにキーは出さない。",
+      "docs_url": "https://cloud.google.com/vertex-ai/generative-ai/docs"
+    },
+    {
+      "id": "cloud_vision",
+      "name_ja": "Cloud Vision Web Detection",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "同じ画像の掲載ページを残す。権利者の断定には使わない。",
+      "docs_url": "https://cloud.google.com/vision/docs/detecting-web"
+    },
+    {
+      "id": "japan_search",
+      "name_ja": "ジャパンサーチ簡易 Web API",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "題名か作者があるとき、権利コードだけを出典に足す。ライセンス文は作らない。キーは不要。",
+      "docs_url": "https://jpsearch.go.jp/static/developer/webapi/ja.html"
+    },
+    {
+      "id": "mediapipe_models",
+      "name_ja": "MediaPipe 同梱モデル",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "姿勢・手・輪郭用の .task と .tflite を API コンテナに同梱する。パッケージ自体のライセンスは OSS 一覧の mediapipe を見る。",
+      "docs_url": "https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker"
+    },
+    {
+      "id": "mixamo",
+      "name_ja": "Mixamo の体（FBX）",
+      "attribution_required": true,
+      "status": "active",
+      "note_ja": "画面の 3D 体は public/dolls の Mixamo FBX（X Bot と人物）。Adobe Mixamo の利用条件に従う。このアプリのソースの OSS ライセンスではない。",
+      "docs_url": "https://www.mixamo.com/"
+    }
+  ]
+}

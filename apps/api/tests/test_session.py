@@ -1,4 +1,4 @@
-"""セッション発行と owner 隔離。"""
+"""ゲストの新規 ID は発行しない。保存はアカウントだけ。"""
 
 from fastapi.testclient import TestClient
 
@@ -8,27 +8,27 @@ from app.store import create_photo, get_photo
 client = TestClient(app)
 
 
-def test_session_mint_and_me() -> None:
+def test_guest_session_is_not_issued() -> None:
     created = client.post("/sessions")
-    assert created.status_code == 200
-    session_id = created.json()["session_id"]
+    assert created.status_code == 401
+    assert created.json()["error"]["code"] == "session_required"
 
     me = client.get("/sessions/me")
-    assert me.status_code == 200
-    assert me.json()["session_id"] == session_id
-
-    again = client.post("/sessions")
-    assert again.status_code == 200
-    assert again.json()["session_id"] == session_id
+    assert me.status_code == 401
 
 
-def test_photo_isolation_between_sessions() -> None:
+def test_photo_isolation_between_accounts() -> None:
     first = TestClient(app)
     second = TestClient(app)
-
-    a = first.post("/sessions").json()["session_id"]
-    b = second.post("/sessions").json()["session_id"]
-    assert a != b
+    owner_a = first.post(
+        "/accounts",
+        json={"username": "iso_a", "password": "long-password"},
+    ).json()["session_id"]
+    owner_b = second.post(
+        "/accounts",
+        json={"username": "iso_b", "password": "long-password"},
+    ).json()["session_id"]
+    assert owner_a != owner_b
 
     photo_id = create_photo(
         [
@@ -43,10 +43,10 @@ def test_photo_isolation_between_sessions() -> None:
                 "contour": [],
             }
         ],
-        a,
+        owner_a,
     )
-    assert get_photo(photo_id, a) is not None
-    assert get_photo(photo_id, b) is None
+    assert get_photo(photo_id, owner_a) is not None
+    assert get_photo(photo_id, owner_b) is None
 
     denied = second.get(f"/photos/{photo_id}/lookups")
     assert denied.status_code == 400

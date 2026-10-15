@@ -1,0 +1,92 @@
+{
+  "passed": 6,
+  "total": 6,
+  "rows": [
+    {
+      "file": "01-front.png",
+      "checks": {
+        "left_arm": true,
+        "right_arm": true,
+        "deltoid_near_left_shoulder": true
+      },
+      "dropped": [],
+      "swapped_arms": false,
+      "source": "mechanical",
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "06-front.png",
+      "checks": {
+        "left_arm": true,
+        "right_arm": true,
+        "deltoid_near_left_shoulder": true
+      },
+      "dropped": [
+        27,
+        28,
+        29,
+        31
+      ],
+      "swapped_arms": false,
+      "source": "mechanical",
+      "landmarks": 27,
+      "ok": true
+    },
+    {
+      "file": "01-left-arm-up.png",
+      "checks": {
+        "left_arm": true,
+        "right_arm": true,
+        "deltoid_near_left_shoulder": true
+      },
+      "dropped": [],
+      "swapped_arms": false,
+      "source": "mechanical",
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "02-right-arm-up.png",
+      "checks": {
+        "left_arm": true,
+        "right_arm": true,
+        "deltoid_near_left_shoulder": true
+      },
+      "dropped": [],
+      "swapped_arms": false,
+      "source": "mechanical",
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "03-left-knee-up.png",
+      "checks": {
+        "raised_knee": true,
+        "deltoid_near_left_shoulder": true
+      },
+      "dropped": [],
+      "swapped_arms": false,
+      "source": "mechanical",
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "04-cropped.png",
+      "checks": {
+        "left_arm": true,
+        "right_arm": true,
+        "knees_absent": true,
+        "deltoid_near_left_shoulder": true
+      },
+      "dropped": [
+        25,
+        26
+      ],
+      "swapped_arms": false,
+      "source": "mechanical",
+      "landmarks": 25,
+      "ok": true
+    }
+  ]
+}

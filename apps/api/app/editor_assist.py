@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.jev_client import ACT_THRESHOLD
+from app.term import protection_until
 
 _EASY = re.compile(
     r"(CC0|Public Domain|パブリックドメイン)",
@@ -59,12 +60,18 @@ def credit_memo(source: dict[str, Any], viewed_at: str = "") -> str:
     kind = str(source.get("material_kind") or "web")
     kind_label = _KIND_JA.get(kind, kind)
     license_value = str(source.get("license") or "unknown").strip() or "unknown"
+    rights_code = str(source.get("rights_code") or "").strip()
+    rights_line = f"権利コード: {rights_code}\n" if rights_code else ""
+    until = str(source.get("protection_until") or "").strip()
+    until_line = f"満了日: {until}\n" if until and until != "unknown" else ""
     when = viewed_at.strip() or now_iso()
     return (
         f"タイトル: {title}\n"
         f"URL: {url}\n"
         f"種別: {kind_label}\n"
         f"ライセンス: {license_value}\n"
+        f"{rights_line}"
+        f"{until_line}"
         f"取得日: {when}"
     )
 
@@ -79,6 +86,7 @@ def enrich_sources(sources: list[dict[str, Any]], viewed_at: str) -> list[dict[s
                 row["license"] = "own_claim"
             else:
                 row["license"] = "unknown"
+        row["protection_until"] = protection_until(str(row.get("created") or ""))
         row["risk_level"] = risk_level(row)
         row["credit_memo"] = credit_memo(row, viewed_at)
         enriched.append(row)

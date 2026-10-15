@@ -8,10 +8,13 @@ client = TestClient(app)
 
 
 def _start_session() -> None:
-    response = client.post("/sessions")
+    response = client.post(
+        "/accounts",
+        json={"username": "question_user", "password": "long-password"},
+    )
     assert response.status_code == 200
     body = response.json()
-    assert body["kind"] == "session"
+    assert body["kind"] == "account"
     assert body["session_id"]
 
 

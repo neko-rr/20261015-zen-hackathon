@@ -91,7 +91,7 @@
 | 項目 | 採用 | 備考 |
 |------|------|------|
 | 言語 | TypeScript と Python | 画面と API |
-| フレームワーク | Next.js と FastAPI | 画面は 3000、API は 8000 |
+| フレームワーク | Next.js 16（App Router）と FastAPI | 画面は 3000、API は 8000。パッチ番号は `apps/web/package.json` |
 | 実行プロダクト | Cloud Run | プロジェクト `illustration-support`（番号 203853466674） |
 | AI | Gemini Enterprise Agent Platform + grounding | ブラウザから呼ばない |
 | 保存 | Cloud Storage と Firestore | バケット名などは [docs/deploy/status.md](docs/deploy/status.md) |

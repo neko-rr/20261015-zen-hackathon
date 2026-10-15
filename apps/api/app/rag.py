@@ -1,4 +1,4 @@
-"""手元資料の索引と検索。RAG Engine 未設定時はローカル簡易検索。"""
+"""手元資料の索引と検索。意味検索は人ごとの File Search。外れは単語一致。"""
 
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ def upsert_index_entry(owner_id: str, entry: dict[str, Any]) -> None:
                 "text": entry.get("text") or "",
                 "project_id": entry.get("project_id") or "",
                 "tags": list(entry.get("tags") or []),
+                "file_search_document": entry.get("file_search_document") or "",
             }
         )
 
@@ -67,12 +68,17 @@ def retrieve(
     """owner 配下だけを検索。横断しない。project_id 指定時はその案件のみ。"""
     if not owner_id.strip() or not query.strip():
         return []
+    rows = _owner_rows(owner_id)
     if rag_engine_enabled():
         try:
-            return _retrieve_vertex(owner_id, query, limit, project_id)
+            from app.file_search import search
+
+            hits = search(owner_id, query, rows, limit, project_id)
+            if hits:
+                return hits
         except Exception:
-            logger.exception("vertex rag failed; fallback local")
-    return _retrieve_local(owner_id, query, limit, project_id)
+            logger.exception("file search failed; fallback keyword")
+    return _retrieve_local(owner_id, query, limit, project_id, rows)
 
 
 def _retrieve_local(
@@ -80,11 +86,12 @@ def _retrieve_local(
     query: str,
     limit: int,
     project_id: str = "",
+    rows: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     tokens = [t for t in re.split(r"\s+", query.lower()) if t]
     pid = project_id.strip()
-    with _lock:
-        rows = list(_index.get(owner_id, []))
+    if rows is None:
+        rows = _owner_rows(owner_id)
     if pid:
         rows = [row for row in rows if row.get("project_id") == pid]
     scored: list[tuple[int, dict[str, Any]]] = []
@@ -119,14 +126,31 @@ def _retrieve_local(
     return hits
 
 
-def _retrieve_vertex(
-    owner_id: str,
-    query: str,
-    limit: int,
-    project_id: str = "",
-) -> list[dict[str, Any]]:
-    logger.info("vertex rag stub owner=%s; using local index", owner_id[:8])
-    return _retrieve_local(owner_id, query, limit, project_id)
+def _owner_rows(owner_id: str) -> list[dict[str, Any]]:
+    """クラウド時は Firestore の索引テキスト。再起動後もその owner だけを探す。"""
+    from app.cloud_config import cloud_persistence_enabled
+
+    if cloud_persistence_enabled():
+        from app.material_store import list_materials
+
+        rows: list[dict[str, Any]] = []
+        for item in list_materials(owner_id):
+            rows.append(
+                {
+                    "doc_id": item.get("doc_id"),
+                    "title": item.get("title") or "",
+                    "material_kind": item.get("material_kind") or "third_party",
+                    "media_type": item.get("media_type") or "note",
+                    "page": item.get("page") or "unknown",
+                    "text": item.get("index_text") or "",
+                    "project_id": item.get("project_id") or "",
+                    "tags": list(item.get("tags") or []),
+                    "file_search_document": item.get("file_search_document") or "",
+                }
+            )
+        return rows
+    with _lock:
+        return list(_index.get(owner_id, []))
 
 
 def index_as_chunks(hits: list[dict[str, Any]]) -> list[dict[str, str]]:

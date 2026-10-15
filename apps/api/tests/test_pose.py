@@ -1,6 +1,6 @@
 """姿勢まわりの単体テスト（MediaPipe 本体は呼ばない）。"""
 
-from app.pose import empty_pose, order_people, _muscle_labels
+from app.pose import empty_pose, map_person_from_crop, order_people, _muscle_labels, _scene_is_distant
 
 
 def test_empty_pose_shape():
@@ -17,6 +17,23 @@ def test_people_are_ordered_left_to_right():
     ordered = order_people([right, left])
     assert ordered[0] is left
     assert ordered[1] is right
+
+
+def test_crop_maps_back_to_the_full_image():
+    person = {
+        "landmarks": [{"index": 0, "name": "nose", "x": 0.5, "y": 0.5, "z": 0.0, "visibility": 1.0}],
+    }
+    mapped = map_person_from_crop(person, 100, 50, 300, 250, 1000, 500)
+    assert abs(float(mapped["landmarks"][0]["x"]) - 0.2) < 1e-9
+    assert abs(float(mapped["landmarks"][0]["y"]) - 0.3) < 1e-9
+
+
+def test_small_person_counts_as_distant():
+    small = {"landmarks": [{"index": 0, "x": 0.4, "y": 0.4}, {"index": 1, "x": 0.42, "y": 0.55}]}
+    tall = {"landmarks": [{"index": 0, "x": 0.4, "y": 0.1}, {"index": 1, "x": 0.5, "y": 0.9}]}
+    assert _scene_is_distant([small]) is True
+    assert _scene_is_distant([tall]) is False
+    assert _scene_is_distant([]) is True
 
 
 def test_muscle_labels_from_landmarks():

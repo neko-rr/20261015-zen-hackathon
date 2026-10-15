@@ -65,6 +65,45 @@ def empty_mannequin() -> dict[str, Any]:
     return {"joints": [], "bones": [], "head": None}
 
 
+def standing_mannequin() -> dict[str, Any]:
+    """写真が無いときの立ち姿。座標は固定で、言葉は角度だけを足す。"""
+    marks = [
+        (0, 0.50, 0.08),
+        (7, 0.44, 0.09),
+        (8, 0.56, 0.09),
+        (11, 0.38, 0.22),
+        (12, 0.62, 0.22),
+        (13, 0.30, 0.38),
+        (14, 0.70, 0.38),
+        (15, 0.28, 0.52),
+        (16, 0.72, 0.52),
+        (23, 0.43, 0.50),
+        (24, 0.57, 0.50),
+        (25, 0.43, 0.70),
+        (26, 0.57, 0.70),
+        (27, 0.43, 0.88),
+        (28, 0.57, 0.88),
+        (31, 0.40, 0.94),
+        (32, 0.60, 0.94),
+    ]
+    landmarks = [
+        {"index": index, "x": x, "y": y, "z": 0.0, "visibility": 1.0} for index, x, y in marks
+    ]
+    doll = build_mannequin(landmarks, aspect=0.7)
+    # 言葉のポーズ用。正の角度で、腕は上げ、股は前、膝は座る向きに折る。
+    hinges = {
+        "hip_l": (1.0, 0.0, 0.0),
+        "hip_r": (1.0, 0.0, 0.0),
+        "knee_l": (-1.0, 0.0, 0.0),
+        "knee_r": (-1.0, 0.0, 0.0),
+    }
+    for joint in doll["joints"]:
+        hinge = hinges.get(joint["id"])
+        if hinge is not None:
+            joint["hinge"] = list(hinge)
+    return doll
+
+
 def build_mannequin(
     landmarks: list[dict[str, Any]],
     hands: list[dict[str, Any]] | None = None,

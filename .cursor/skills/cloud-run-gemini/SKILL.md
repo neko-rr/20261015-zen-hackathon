@@ -56,10 +56,13 @@ gcloud config set project illustration-support
 
 ## デプロイ手順
 
-開発中は push では出さない。出すとき:
+`main` への push は `.github/workflows/test.yml` のあと `.github/workflows/deploy.yml` が出す。pull request はテストだけ。
 
 1. 手元: `powershell -File scripts/deploy.ps1`（リポジトリ直下）
-2. または `.github/workflows/deploy.yml` の手動実行（要 GitHub 変数 `GCP_WORKLOAD_IDENTITY_PROVIDER` / `GCP_DEPLOYER_SA`）
+2. または `main` への push、または Actions の手動実行（要 GitHub 変数 `GCP_WORKLOAD_IDENTITY_PROVIDER` / `GCP_DEPLOYER_SA`）
+3. `SESSION_SIGNING_SECRET` は GitHub Actions の secret。ワークフローは secret があるときだけ更新し、無いときは Cloud Run の既存値を残す。値はリポジトリに書かない
+
+画面は `API_BASE_URL` へ `/drawref-api` を転送する。ブラウザに出すのはその相対パスだけ。
 
 前提:
 

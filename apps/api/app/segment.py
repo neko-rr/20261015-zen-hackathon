@@ -34,9 +34,9 @@ def empty_segment() -> dict[str, Any]:
     return {"contour": [], "box": None}
 
 
-def segment_person(image: bytes, mime_type: str) -> dict[str, Any]:
+def segment_person(image: bytes, mime_type: str, pixels: Any | None = None) -> dict[str, Any]:
     """写っている人の輪郭。全身でなくても、マスクにある範囲だけ返す。"""
-    if not image:
+    if not image and pixels is None:
         return empty_segment()
     segmenter = _get_segmenter()
     if segmenter is None:
@@ -49,7 +49,8 @@ def segment_person(image: bytes, mime_type: str) -> dict[str, Any]:
         return empty_segment()
 
     try:
-        pixels = _decode_pixels(image)
+        if pixels is None:
+            pixels = _decode_pixels(image)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=pixels)
         result = segmenter.segment(mp_image)
         masks = result.confidence_masks or []
@@ -195,6 +196,11 @@ def _box_from_contour(contour: list[dict[str, float]]) -> dict[str, float] | Non
         "width": max(max_x - min_x, 0.01),
         "height": max(max_y - min_y, 0.01),
     }
+
+
+def warm() -> None:
+    """起動時にモデルを読む。失敗しても解析は続けられる。"""
+    _get_segmenter()
 
 
 def _get_segmenter() -> Any:

@@ -1,24 +1,31 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   ApiError,
   analyzePhoto,
   askQuestion,
   checkHealth,
-  ensureSession,
+  getPhoto,
+  currentSession,
   listMaterials,
   listProjects,
   lookupObject,
+  type Material,
+  speakPose,
+  transcribePose,
   sourceHref,
   type ChatTurn,
+  type FileFacts,
   type Lookup,
   type Mannequin,
   type PhotoObject,
   type PoseData,
+  type SpokenPoseOption,
   type Project,
+  type WebPage,
 } from "@/lib/api";
 import {
   buildExportMarkdown,
@@ -27,10 +34,18 @@ import {
   kindCounts,
   type SourceChecklist,
 } from "@/lib/editorAssist";
+import { AccountGate, SignedIn } from "@/components/AccountGate";
+import { hydrateAccountPrefs, LOCALE_KEY, persistLocale, persistTheme, THEME_KEY } from "@/lib/accountPrefs";
 import { sanitizeLocale, text, type Locale, type MessageKey } from "@/lib/messages";
+import { startPoseMic } from "@/lib/poseMic";
+import { preparePhotoFile } from "@/lib/preparePhoto";
 import { sanitizeTheme, THEME_OPTIONS, type ThemeId } from "@/lib/themes";
 import { CompareSources } from "@/components/EditorSources";
+import { MaterialDesk } from "@/components/MaterialDesk";
+import { ProjectMemo } from "@/components/ProjectMemo";
 import { AnatomyViewer, type CameraId, type DollView } from "@/components/AnatomyViewer";
+import { DOLL_BODIES, type DollBodyId } from "@/lib/mixamoBody";
+import { CaptureGuide } from "@/components/CaptureGuide";
 import { MannequinLegend, MannequinOverlay } from "@/components/MannequinOverlay";
 import { PERSPECTIVE_IDS, PerspectiveGuide, type PerspectiveMode } from "@/components/PerspectiveGuide";
 import { buildFigure } from "@/lib/figure";
@@ -39,9 +54,7 @@ import { applyHandShape, HAND_IDS, type HandId } from "@/lib/handShape";
 import { applyBends, applyMirror, applyTwist, limitHingeBend } from "@/lib/mannequinPose";
 import { applyProportion, BUILD_IDS, HEAD_IDS, type BuildId, type HeadId } from "@/lib/proportions";
 
-const THEME_KEY = "drawref:themeId";
-const LOCALE_KEY = "drawref:locale";
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 
 type BodyView = "photo" | "mask" | "skeleton" | "muscle" | "view3d";
 type ComparePanel = { view: BodyView; camera: CameraId };
@@ -170,6 +183,17 @@ function kindKey(kind: string): "kindPerson" | "kindAnimal" | "kindObject" {
   return "kindObject";
 }
 
+function personIsSmall(pose: PoseData): boolean {
+  const people = pose.people?.length ? pose.people : pose.landmarks.length ? [{ landmarks: pose.landmarks }] : [];
+  return people.some((person) => {
+    const ys = person.landmarks.map((point) => point.y);
+    if (ys.length < 4) {
+      return false;
+    }
+    return Math.max(...ys) - Math.min(...ys) < 0.45;
+  });
+}
+
 function isLiving(kind: string): boolean {
   return kind === "person" || kind === "animal";
 }
@@ -227,14 +251,31 @@ function poseDoll(mannequin: Mannequin, adjust: Adjust): Mannequin {
   return applyMirror(twisted, adjust.mirrored);
 }
 
+function fileFactValue(locale: Locale, value: string): string {
+  if (value === "present") {
+    return text(locale, "fileFactsPresent");
+  }
+  if (value === "absent") {
+    return text(locale, "fileFactsAbsent");
+  }
+  if (!value || value === "unknown") {
+    return text(locale, "unknown");
+  }
+  return value;
+}
+
 export function Studio() {
   const [locale, setLocale] = useState<Locale>("ja");
   const [themeId, setThemeId] = useState<ThemeId>("default");
   const [apiUp, setApiUp] = useState<boolean | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
-  const [sessionBusy, setSessionBusy] = useState(false);
+  const [accountName, setAccountName] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [photoId, setPhotoId] = useState<string>("");
+  const [fileFacts, setFileFacts] = useState<FileFacts | null>(null);
+  const [webPages, setWebPages] = useState<WebPage[]>([]);
+  const [rightsQuery, setRightsQuery] = useState("");
   const [objects, setObjects] = useState<PhotoObject[]>([]);
   const [pose, setPose] = useState<PoseData>(EMPTY_POSE);
   const [adjusts, setAdjusts] = useState<Record<string, Adjust>>({});
@@ -249,11 +290,22 @@ export function Studio() {
   const [vpRight, setVpRight] = useState(0.78);
   const [photoFlip, setPhotoFlip] = useState(false);
   const [grayscale, setGrayscale] = useState(false);
+  const [dollBody, setDollBody] = useState<DollBodyId>("x-bot");
   const [selectedId, setSelectedId] = useState<string>("");
   const [step, setStep] = useState<"pick" | "detail">("pick");
   const [panels, setPanels] = useState<ComparePanel[]>([{ view: "photo", camera: "front" }]);
-  const [busy, setBusy] = useState<"analyze" | "lookup" | "chat" | null>(null);
+  const [busy, setBusy] = useState<"analyze" | "lookup" | "chat" | "speak" | null>(null);
+  const [poseDraft, setPoseDraft] = useState("");
+  const [listening, setListening] = useState(false);
+  const micRef = useRef<{ stop: () => Promise<Blob> } | null>(null);
+  const [poseChoices, setPoseChoices] = useState<SpokenPoseOption[]>([]);
+  const [posePick, setPosePick] = useState(0);
+  const [poseFromCatalog, setPoseFromCatalog] = useState(false);
+  const [spokenQuery, setSpokenQuery] = useState("");
+  const [labelsPending, setLabelsPending] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [error, setError] = useState<string>("");
+  const [sourcesOpen, setSourcesOpen] = useState(true);
   const [history, setHistory] = useState<Lookup[]>([]);
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [chatDraft, setChatDraft] = useState<string>("");
@@ -261,6 +313,8 @@ export function Studio() {
   const [favorites, setFavorites] = useState<Record<string, true>>({});
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<Project[]>([]);
+  const [library, setLibrary] = useState<Material[]>([]);
+  const [openMaterialIds, setOpenMaterialIds] = useState<string[]>([]);
   const [knownTags, setKnownTags] = useState<string[]>([]);
   const [activeProjectId, setActiveProjectId] = useState("");
   const [activeTags, setActiveTags] = useState<string[]>([]);
@@ -457,43 +511,255 @@ export function Studio() {
   );
 
   function applyLocale(next: Locale) {
+    const previous = locale;
     setLocale(next);
     localStorage.setItem(LOCALE_KEY, next);
     document.documentElement.lang = next;
+    if (!sessionReady) {
+      return;
+    }
+    void persistLocale(next).catch((caught) => {
+      setLocale(previous);
+      localStorage.setItem(LOCALE_KEY, previous);
+      document.documentElement.lang = previous;
+      const message = caught instanceof ApiError ? caught.message : text(previous, "prefsSaveFailed");
+      setError(message);
+    });
   }
 
   function applyTheme(next: ThemeId) {
+    const previous = themeId;
     setThemeId(next);
     localStorage.setItem(THEME_KEY, next);
     document.documentElement.setAttribute("data-theme", next);
+    if (!sessionReady) {
+      return;
+    }
+    void persistTheme(next).catch((caught) => {
+      setThemeId(previous);
+      localStorage.setItem(THEME_KEY, previous);
+      document.documentElement.setAttribute("data-theme", previous);
+      const message = caught instanceof ApiError ? caught.message : text(locale, "prefsSaveFailed");
+      setError(message);
+    });
   }
 
   async function loadPersonalMeta() {
     const [materialBody, projectItems] = await Promise.all([listMaterials(""), listProjects()]);
     setKnownTags(materialBody.tags);
+    setLibrary(materialBody.materials);
     setProjects(projectItems);
   }
 
-  async function onStartSession() {
-    setSessionBusy(true);
+  async function refreshProjects() {
+    try {
+      setProjects(await listProjects());
+    } catch {
+      // 作業そのものは続ける。記録の再表示だけ失敗する。
+    }
+  }
+
+  function markSession(_kind: string, username?: string) {
+    setAccountName(username || "");
+    setSessionReady(true);
+  }
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const current = await currentSession();
+        if (!current) {
+          return;
+        }
+        markSession(current.kind, current.username);
+        try {
+          const prefs = await hydrateAccountPrefs();
+          setLocale(prefs.locale);
+          setThemeId(prefs.themeId);
+          await loadPersonalMeta();
+        } catch (metaError) {
+          console.error("personal meta load failed", metaError);
+        }
+      } catch (caught) {
+        console.error("session resume failed", caught);
+      } finally {
+        setSessionChecked(true);
+      }
+    })();
+  }, []);
+
+  function enterAccount(session: { kind: string; username?: string }) {
+    markSession(session.kind, session.username);
+    void hydrateAccountPrefs()
+      .then((prefs) => {
+        setLocale(prefs.locale);
+        setThemeId(prefs.themeId);
+      })
+      .catch((prefError) => {
+        console.error("preference load failed", prefError);
+      });
+    void loadPersonalMeta().catch((metaError) => {
+      console.error("personal meta load failed", metaError);
+    });
+  }
+
+  useEffect(() => {
+    return () => {
+      const mic = micRef.current;
+      micRef.current = null;
+      if (mic) {
+        void mic.stop();
+      }
+    };
+  }, []);
+
+  async function submitSpoken(message: string) {
+    if (message === spokenQuery && poseChoices.length > 1) {
+      showSpokenChoice((posePick + 1) % poseChoices.length);
+      return;
+    }
+    const result = await speakPose(message);
+    const first = result.options[0];
+    setSpokenQuery(message);
+    setPoseChoices(result.options);
+    setPosePick(0);
+    setPoseFromCatalog(result.pose_source === "catalog");
+    applySpoken(first, result.mannequin, sources.length === 0);
+  }
+
+  async function onSpeak() {
+    const message = poseDraft.trim();
+    if (!message) {
+      setError(text(locale, "speakPlaceholder"));
+      return;
+    }
+    if (!sessionReady) {
+      setError(text(locale, "sessionNeeded"));
+      return;
+    }
+    setBusy("speak");
     setError("");
     try {
-      await ensureSession();
-      setSessionReady(true);
-      try {
-        await loadPersonalMeta();
-      } catch (metaError) {
-        // 案件・タグは後からでもよい。ここで失敗しても写真は選べるようにする
-        console.error("personal meta load failed", metaError);
-      }
+      await submitSpoken(message);
     } catch (caught) {
-      const message =
-        caught instanceof ApiError ? caught.message : text(locale, "sessionNeeded");
-      setError(message);
-      setSessionReady(false);
+      const messageText = caught instanceof ApiError ? caught.message : "ポーズを読めませんでした。";
+      setError(messageText);
     } finally {
-      setSessionBusy(false);
+      setBusy(null);
     }
+  }
+
+  async function onMic() {
+    if (!sessionReady) {
+      setError(text(locale, "sessionNeeded"));
+      return;
+    }
+    if (listening && micRef.current) {
+      const mic = micRef.current;
+      micRef.current = null;
+      setListening(false);
+      setBusy("speak");
+      setError("");
+      try {
+        const heard = (await transcribePose(await mic.stop(), locale)).trim();
+        if (!heard) {
+          setError(text(locale, "speakMicEmpty"));
+          return;
+        }
+        setPoseDraft(heard);
+        await submitSpoken(heard);
+      } catch (caught) {
+        const messageText = caught instanceof ApiError ? caught.message : text(locale, "speakMicDenied");
+        setError(messageText);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+    try {
+      micRef.current = await startPoseMic();
+      setListening(true);
+      setError("");
+    } catch {
+      setError(text(locale, "speakMicDenied"));
+    }
+  }
+
+  function showSpokenChoice(index: number) {
+    const option = poseChoices[index];
+    if (!option) {
+      return;
+    }
+    setPosePick(index);
+    applySpoken(option, { joints: [], bones: [], head: null }, false);
+  }
+
+  function cancelSpoken() {
+    setPoseChoices([]);
+    setPosePick(0);
+    setPoseFromCatalog(false);
+    setSpokenQuery("");
+    const spokenOnly = !previewUrl && objects.every((item) => item.object_id === "spoken_1");
+    if (spokenOnly) {
+      setPose(EMPTY_POSE);
+      setObjects([]);
+      setAdjusts({});
+      setEditId("");
+      setSelectedId("");
+      setPanels([{ view: "photo", camera: "front" }]);
+      return;
+    }
+    if (activeId) {
+      setAdjusts((prev) => ({ ...prev, [activeId]: { ...FRESH_ADJUST } }));
+    }
+  }
+
+  function applySpoken(option: SpokenPoseOption, mannequin: Mannequin, install: boolean) {
+    const target = install || !sources.length ? "spoken_1" : activeId;
+    if (install) {
+      setPose({
+        landmarks: [],
+        edges: [],
+        muscles: [],
+        mannequin,
+        people: [
+          {
+            object_id: "spoken_1",
+            mannequin,
+            landmarks: [],
+            edges: [],
+            muscles: [],
+          },
+        ],
+      });
+      setObjects([
+        {
+          object_id: "spoken_1",
+          label: option.summary,
+          kind: "person",
+          is_primary: true,
+          box: null,
+          joints: [],
+          muscles: [],
+          contour: [],
+        },
+      ]);
+      setEditId("spoken_1");
+      setSelectedId("spoken_1");
+      setPanels([{ view: "view3d", camera: "threeQuarter" }]);
+    } else if (target === "spoken_1") {
+      setObjects((prev) => prev.map((item) => (item.object_id === target ? { ...item, label: option.summary } : item)));
+    }
+    setAdjusts((prev) => ({
+      ...prev,
+      [target]: {
+        ...(prev[target] ?? FRESH_ADJUST),
+        bends: option.bends,
+        upperDeg: option.upper_deg,
+        lowerDeg: option.lower_deg,
+        mirrored: option.mirrored,
+      },
+    }));
   }
 
   async function onFile(file: File | undefined) {
@@ -504,12 +770,13 @@ export function Studio() {
       setError(text(locale, "sessionNeeded"));
       return;
     }
-    if (!ALLOWED_TYPES.has(file.type)) {
-      setError("JPEG、PNG、WebP のいずれかを上げてください。");
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(text(locale, "photoTooLarge"));
       return;
     }
     setBusy("analyze");
     setError("");
+    const prepared = await preparePhotoFile(file);
     setHistory([]);
     setChatHistory([]);
     setChatDraft("");
@@ -519,8 +786,16 @@ export function Studio() {
     setSelectedId("");
     setStep("pick");
     setPose(EMPTY_POSE);
+    setPoseChoices([]);
+    setPosePick(0);
+    setPoseFromCatalog(false);
+    setSpokenQuery("");
     setAdjusts({});
     setEditId("");
+    setLabelsPending(false);
+    setFileFacts(null);
+    setWebPages([]);
+    setRightsQuery("");
     setPanels([{ view: "photo", camera: "front" }]);
     setPerspective("off");
     setHorizonY(0.5);
@@ -532,10 +807,15 @@ export function Studio() {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
     }
-    setPreviewUrl(URL.createObjectURL(file));
+    setPreviewUrl(URL.createObjectURL(prepared));
     try {
-      const result = await analyzePhoto(file);
+      const result = await analyzePhoto(prepared);
       setPhotoId(result.photo_id);
+      if (activeProjectId) {
+        void refreshProjects();
+      }
+      setFileFacts(result.file_facts);
+      setWebPages(result.web_pages);
       setPose(result.pose ?? EMPTY_POSE);
       setObjects(
         result.objects.map((item) => ({
@@ -545,7 +825,12 @@ export function Studio() {
           contour: item.contour ?? [],
         })),
       );
-      setPanels([{ view: "mask", camera: "front" }]);
+      const hasDoll = Boolean(
+        result.pose.people?.some((person) => person.mannequin?.joints?.length) ||
+          result.pose.mannequin?.joints?.length,
+      );
+      setPanels([{ view: hasDoll ? "skeleton" : "mask", camera: "front" }]);
+      setLabelsPending(result.labels_pending);
       setStep("pick");
       setSelectedId("");
       await loadPersonalMeta();
@@ -557,6 +842,45 @@ export function Studio() {
     }
   }
 
+  useEffect(() => {
+    if (!labelsPending || !photoId) {
+      return;
+    }
+    let stopped = false;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      tries += 1;
+      void getPhoto(photoId)
+        .then((next) => {
+          if (stopped || next.labels_pending) {
+            if (tries >= 20 && !stopped) {
+              setLabelsPending(false);
+            }
+            return;
+          }
+          setObjects(
+            next.objects.map((item) => ({
+              ...item,
+              joints: item.joints ?? [],
+              muscles: item.muscles ?? [],
+              contour: item.contour ?? [],
+            })),
+          );
+          setLabelsPending(false);
+        })
+        .catch((error) => {
+          console.error("label poll failed", error);
+          if (tries >= 20 && !stopped) {
+            setLabelsPending(false);
+          }
+        });
+    }, 1000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [labelsPending, photoId]);
+
   async function runLookup(objectId: string) {
     if (!photoId || !objectId) {
       return;
@@ -564,7 +888,10 @@ export function Studio() {
     setBusy("lookup");
     setError("");
     try {
-      const result = await lookupObject(photoId, objectId, ragOptions);
+      const result = await lookupObject(photoId, objectId, {
+        ...ragOptions,
+        query: rightsQuery.trim(),
+      });
       setHistory((prev) => [result, ...prev]);
     } catch (caught) {
       const message = caught instanceof ApiError ? caught.message : "調べものに失敗しました。";
@@ -596,12 +923,39 @@ export function Studio() {
       const result = await askQuestion(photoId, selected.object_id, message, ragOptions);
       setChatHistory((prev) => [result, ...prev]);
       setChatDraft("");
+      const opened = (result.materials ?? []).map((item) => item.doc_id).filter(Boolean);
+      if (opened.length) {
+        setOpenMaterialIds((prev) => {
+          const next = [...prev];
+          for (const id of opened) {
+            if (!next.includes(id)) {
+              next.push(id);
+            }
+          }
+          return next;
+        });
+      }
+      if (activeProjectId) {
+        void refreshProjects();
+      }
     } catch (caught) {
       const next = caught instanceof ApiError ? caught.message : "調べものに失敗しました。";
       setError(next);
     } finally {
       setBusy(null);
     }
+  }
+
+  if (!sessionChecked) {
+    return (
+      <main className="gate-wrap">
+        <p className="hint">{text(locale, "checkingSession")}</p>
+      </main>
+    );
+  }
+
+  if (!sessionReady) {
+    return <AccountGate locale={locale} onLocale={applyLocale} onSignedIn={enterAccount} />;
   }
 
   return (
@@ -612,16 +966,19 @@ export function Studio() {
           <p className="lead">{text(locale, "lead")}</p>
         </div>
         <div className="prefs">
-          <div className="demo">
-            <strong>{text(locale, "demo")}</strong>
-            <span className="hint">{text(locale, "demoHint")}</span>
-            <button type="button" disabled={sessionBusy || sessionReady} onClick={() => void onStartSession()}>
-              {sessionBusy ? text(locale, "starting") : text(locale, "start")}
-            </button>
-            {sessionReady ? <span className="hint">{text(locale, "sessionReady")}</span> : null}
-          </div>
+          <SignedIn
+            locale={locale}
+            username={accountName}
+            onLoggedOut={() => {
+              setAccountName("");
+              setSessionReady(false);
+            }}
+          />
           <div>
             <Link href="/library">{text(locale, "library")}</Link>
+          </div>
+          <div>
+            <Link href="/licenses">{text(locale, "licenses")}</Link>
           </div>
           <div>
             <p className="hint">{text(locale, "language")}</p>
@@ -653,22 +1010,122 @@ export function Studio() {
         </div>
       </header>
 
-      <div className="layout">
+      <div className={`layout${sourcesOpen ? "" : " is-focus"}`}>
         <section className="card">
-          <label className="file">
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              disabled={busy !== null || !sessionReady || sessionBusy}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                void onFile(file);
-                event.target.value = "";
-              }}
-            />
-            <span>{text(locale, "pickPhoto")}</span>
-          </label>
+          <div className="file-row">
+            <label className="file">
+              <input
+                type="file"
+                accept="image/*"
+                disabled={busy !== null || !sessionReady}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  void onFile(file);
+                  event.target.value = "";
+                }}
+              />
+              <span>{text(locale, "pickPhoto")}</span>
+            </label>
+            <button
+              type="button"
+              disabled={busy !== null || !sessionReady}
+              onClick={() => setCameraOpen(true)}
+            >
+              {text(locale, "shoot")}
+            </button>
+          </div>
+          <p className="hint">{text(locale, "guideNote")}</p>
           <p className="hint">{text(locale, "pickHint")}</p>
+          <form
+            className="speak-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onSpeak();
+            }}
+          >
+            <input
+              type="text"
+              value={poseDraft}
+              maxLength={500}
+              placeholder={text(locale, "speakPlaceholder")}
+              disabled={busy !== null || !sessionReady}
+              onChange={(event) => setPoseDraft(event.target.value)}
+            />
+            <button type="submit" disabled={busy !== null || listening || !sessionReady}>
+              {busy === "speak" ? text(locale, "speakBusy") : text(locale, "speakPose")}
+            </button>
+            <button
+              type="button"
+              disabled={busy !== null || !sessionReady}
+              onClick={() => void onMic()}
+            >
+              {listening ? text(locale, "speakMicStop") : text(locale, "speakMic")}
+            </button>
+          </form>
+          <p className="hint">{text(locale, "speakHint")}</p>
+          {cameraOpen ? (
+            <CaptureGuide
+              title={text(locale, "shoot")}
+              note={text(locale, "guideNote")}
+              takeLabel={text(locale, "shootTake")}
+              closeLabel={text(locale, "shootClose")}
+              deniedLabel={text(locale, "shootDenied")}
+              onShot={(file) => {
+                setCameraOpen(false);
+                void onFile(file);
+              }}
+              onClose={() => setCameraOpen(false)}
+            />
+          ) : null}
+          {previewUrl && personIsSmall(pose) ? <p className="hint">{text(locale, "guideWarn")}</p> : null}
+          {fileFacts ? (
+            <div className="facts">
+              <p className="hint">{text(locale, "fileFactsNote")}</p>
+              <div>
+                <span>{text(locale, "fileArtist")}</span>
+                <span>{fileFactValue(locale, fileFacts.artist)}</span>
+              </div>
+              <div>
+                <span>{text(locale, "fileCopyright")}</span>
+                <span>{fileFactValue(locale, fileFacts.copyright)}</span>
+              </div>
+              <div>
+                <span>{text(locale, "fileCopyrightUrl")}</span>
+                <span>{fileFactValue(locale, fileFacts.copyright_url)}</span>
+              </div>
+              <div>
+                <span>{text(locale, "fileImageId")}</span>
+                <span>{fileFactValue(locale, fileFacts.image_id)}</span>
+              </div>
+              <div>
+                <span>{text(locale, "fileCredit")}</span>
+                <span>{fileFactValue(locale, fileFacts.credit)}</span>
+              </div>
+              <div>
+                <span>{text(locale, "fileC2pa")}</span>
+                <span>
+                  {fileFactValue(locale, fileFacts.c2pa)}
+                  {fileFacts.c2pa === "present" && fileFacts.c2pa_generator !== "unknown"
+                    ? ` ${fileFacts.c2pa_generator}`
+                    : ""}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          {webPages.length > 0 ? (
+            <div className="facts">
+              <p className="hint">{text(locale, "webPagesNote")}</p>
+              <ul>
+                {webPages.map((page) => (
+                  <li key={page.url}>
+                    <a href={page.url} target="_blank" rel="noreferrer">
+                      {page.title || page.url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <div className="modes" aria-label={text(locale, "compareCount")}>
             {([1, 2, 3, 4] as const).map((count) => (
               <button
@@ -681,7 +1138,9 @@ export function Studio() {
               </button>
             ))}
           </div>
-          {busy === "analyze" ? <p>{text(locale, "analyzing")}</p> : null}
+          {busy === "analyze" ? <p className="hint">{text(locale, "analyzing")}</p> : null}
+          {labelsPending ? <p className="hint">{text(locale, "naming")}</p> : null}
+          {busy === "lookup" || busy === "chat" ? <p className="hint">{text(locale, busy === "lookup" ? "looking" : "asking")}</p> : null}
           {(showsDoll && sources.length) || previewUrl ? (
             <div className="doll-controls">
               {sources.length > 1 ? <p className="hint">{text(locale, "multiPersonHint")}</p> : null}
@@ -711,6 +1170,16 @@ export function Studio() {
                       {BUILD_IDS.map((id) => (
                         <option key={id} value={id}>
                           {text(locale, buildLabel(id))}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="proportion-field">
+                    <span>{text(locale, "dollBody")}</span>
+                    <select value={dollBody} onChange={(event) => setDollBody(event.target.value as DollBodyId)}>
+                      {DOLL_BODIES.map((id) => (
+                        <option key={id} value={id}>
+                          {text(locale, id === "x-bot" ? "dollXBot" : "dollCh36")}
                         </option>
                       ))}
                     </select>
@@ -832,7 +1301,34 @@ export function Studio() {
           {showsFlatDoll && sources.length ? (
             <p className="hint">{text(locale, "poseBendHint")}</p>
           ) : null}
-          {previewUrl ? (
+          {poseChoices.length ? (
+            <div className="speak-picks" role="group" aria-label={text(locale, "speakPick")}>
+              <p className="hint">
+                {poseFromCatalog ? text(locale, "speakCatalog") : text(locale, "speakPick")}
+                {` ${posePick + 1} / ${poseChoices.length}`}
+              </p>
+              <div className="speak-pick-row">
+                {poseChoices.map((item, index) => (
+                  <button
+                    type="button"
+                    key={`${item.summary}-${index}`}
+                    className={index === posePick ? "is-on" : undefined}
+                    aria-pressed={index === posePick}
+                    onClick={() => showSpokenChoice(index)}
+                  >
+                    {item.summary}
+                  </button>
+                ))}
+                <button type="button" onClick={() => showSpokenChoice((posePick + 1) % poseChoices.length)} disabled={poseChoices.length < 2}>
+                  {text(locale, "speakNext")}
+                </button>
+                <button type="button" onClick={cancelSpoken}>
+                  {text(locale, "speakCancel")}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {previewUrl || sources.length ? (
             <div className={`view-grid is-${panels.length}`}>
               {panels.map((panel, index) => (
                 <div className="compare-panel" key={index}>
@@ -872,6 +1368,9 @@ export function Studio() {
                       guides={guides}
                       camera={panel.camera}
                       photoFlip={photoFlip}
+                      bodyId={dollBody}
+                      bodyLoading={text(locale, "dollLoading")}
+                      bodyFailed={text(locale, "dollFailed")}
                       hint={
                         sources.length ? text(locale, "anatomyHint") : text(locale, "poseEmpty")
                       }
@@ -881,7 +1380,11 @@ export function Studio() {
                   ) : (
                     <div className={`stage-wrap${photoFlip ? " is-flipped" : ""}`}>
                       {/* blob URL は next/image に載せない */}
-                      <img src={previewUrl} alt="" className={grayscale ? "is-gray" : undefined} />
+                      {previewUrl ? (
+                        <img src={previewUrl} alt="" className={grayscale ? "is-gray" : undefined} />
+                      ) : (
+                        <div className="stage-blank" />
+                      )}
                       <div className="overlay">
                         {panel.view === "mask"
                           ? objects.map((item) => {
@@ -1007,7 +1510,33 @@ export function Studio() {
           ) : null}
         </section>
 
-        <section className="card">
+        <section
+          className={`card sources-pane${sourcesOpen ? "" : " is-collapsed"}`}
+          aria-label={text(locale, "sourcesPane")}
+        >
+          <div className="sources-pane-head">
+            <button
+              type="button"
+              className="sources-toggle"
+              aria-expanded={sourcesOpen}
+              aria-controls="sources-pane-body"
+              onClick={() => setSourcesOpen((open) => !open)}
+            >
+              {sourcesOpen ? text(locale, "hideSources") : text(locale, "showSources")}
+            </button>
+          </div>
+          <div id="sources-pane-body" hidden={!sourcesOpen}>
+          <MaterialDesk
+            locale={locale}
+            materials={library}
+            openIds={openMaterialIds}
+            projectId={activeProjectId}
+            onOpenIds={setOpenMaterialIds}
+            onRecorded={() => {
+              void refreshProjects();
+            }}
+            disabled={busy !== null}
+          />
           <h2>{text(locale, "layers")}</h2>
           {objects.length === 0 ? <p className="hint">{text(locale, "noLayers")}</p> : null}
           <ul className="layers">
@@ -1056,6 +1585,27 @@ export function Studio() {
                 ))}
               </select>
             </label>
+            {activeProjectId ? (
+              <>
+                <EvidenceLog
+                  locale={locale}
+                  project={projects.find((item) => item.project_id === activeProjectId)}
+                />
+                {projects.find((item) => item.project_id === activeProjectId) ? (
+                  <ProjectMemo
+                    locale={locale}
+                    project={projects.find((item) => item.project_id === activeProjectId)!}
+                    onSaved={(next) => {
+                      setProjects((prev) =>
+                        prev.map((item) => (item.project_id === next.project_id ? next : item)),
+                      );
+                    }}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <p className="hint">{text(locale, "evidenceOff")}</p>
+            )}
             <div>
               <p className="hint">{text(locale, "activeTags")}</p>
               {knownTags.length === 0 ? (
@@ -1078,6 +1628,19 @@ export function Studio() {
               )}
             </div>
           </div>
+
+          <label className="rights-query">
+            <span>{text(locale, "rightsQuery")}</span>
+            <input
+              type="text"
+              value={rightsQuery}
+              maxLength={80}
+              placeholder={text(locale, "rightsQueryPlaceholder")}
+              disabled={!selected || busy !== null}
+              onChange={(event) => setRightsQuery(event.target.value)}
+            />
+          </label>
+          <p className="hint">{text(locale, "rightsQueryHint")}</p>
 
           <button type="button" className="lookup" disabled={!selected || busy !== null} onClick={() => void onLookup()}>
             {busy === "lookup" ? text(locale, "looking") : text(locale, "lookup")}
@@ -1167,6 +1730,8 @@ export function Studio() {
                     {text(locale, "lookupAgain")}
                   </button>
                   <h3>{text(locale, "summary")}</h3>
+                  {item.cached ? <p className="hint">{text(locale, "cachedLookup")}</p> : null}
+                  {item.search_skipped ? <p className="hint">{text(locale, "rightsSkipped")}</p> : null}
                   <p>{item.summary}</p>
                   <h3>{text(locale, "sources")}</h3>
                   <p className="hint">{text(locale, "similarNote")}</p>
@@ -1212,19 +1777,36 @@ export function Studio() {
                   <p>{item.message}</p>
                   <h3>{text(locale, "answer")}</h3>
                   <p>{item.answer}</p>
-                  <h3>{text(locale, "sources")}</h3>
-                  <CompareSources
-                    locale={locale}
-                    sources={item.sources}
-                    viewedAt={item.viewed_at}
-                    checks={checks}
-                    onCheck={setSourceCheck}
-                    showFacts
-                    favorites={favorites}
-                    onToggleFavorite={toggleFavorite}
-                    notes={notes}
-                    onNote={setSourceNote}
-                  />
+                  {(item.materials ?? []).length ? (
+                    <p className="hint">
+                      {text(locale, "libraryDesk")}: {(item.materials ?? []).map((row) => row.title).join("、")}
+                    </p>
+                  ) : null}
+                  {(item.memory ?? []).length ? (
+                    <p className="hint">
+                      {text(locale, "chatMemory")}:{" "}
+                      {(item.memory ?? [])
+                        .map((row) => `${row.project_name} / ${row.title}`)
+                        .join("、")}
+                    </p>
+                  ) : null}
+                  {item.sources.length ? (
+                    <>
+                      <h3>{text(locale, "sources")}</h3>
+                      <CompareSources
+                        locale={locale}
+                        sources={item.sources}
+                        viewedAt={item.viewed_at}
+                        checks={checks}
+                        onCheck={setSourceCheck}
+                        showFacts
+                        favorites={favorites}
+                        onToggleFavorite={toggleFavorite}
+                        notes={notes}
+                        onNote={setSourceNote}
+                      />
+                    </>
+                  ) : null}
                   {item.search_suggestions_html ? (
                     <div>
                       <h3>{text(locale, "suggestions")}</h3>
@@ -1238,6 +1820,7 @@ export function Studio() {
               );
             })}
           </div>
+          </div>
         </section>
       </div>
       <p className="status">
@@ -1245,4 +1828,78 @@ export function Studio() {
       </p>
     </main>
   );
+}
+
+function EvidenceLog({
+  locale,
+  project,
+}: {
+  locale: Locale;
+  project: Project | undefined;
+}) {
+  const photos = project?.photos ?? [];
+  const calls = project?.library_calls ?? [];
+  const prompts = project?.prompts ?? [];
+  const citations = project?.citations ?? [];
+  if (!photos.length && !calls.length && !prompts.length && !citations.length) {
+    return <p className="hint">{text(locale, "evidenceEmpty")}</p>;
+  }
+  return (
+    <div className="evidence-log">
+      <p className="hint">{text(locale, "evidencePhotos")}</p>
+      <ul>
+        {photos.map((item) => (
+          <li key={item.photo_id}>
+            {item.photo_id.slice(0, 8)} {formatViewedAt(item.at)}
+          </li>
+        ))}
+      </ul>
+      <p className="hint">{text(locale, "evidenceLibrary")}</p>
+      <ul>
+        {calls.map((item) => (
+          <li key={item.doc_id}>
+            {item.title}（{text(locale, item.via === "chat" ? "evidenceViaChat" : "evidenceViaOpen")}）
+          </li>
+        ))}
+      </ul>
+      <p className="hint">{text(locale, "evidencePrompts")}</p>
+      <ul>
+        {prompts.map((item, index) => (
+          <li key={`${item.at}-${index}`}>
+            <details>
+              <summary>
+                {item.label} {formatViewedAt(item.at)}
+              </summary>
+              <p className="prompt-text">{item.message}</p>
+              <p className="hint prompt-text">{item.answer}</p>
+            </details>
+          </li>
+        ))}
+      </ul>
+      <p className="hint">{text(locale, "evidenceCitations")}</p>
+      <ul>
+        {citations.map((item, index) => (
+          <li key={`${item.doc_id}-${item.at}-${index}`}>
+            {item.title} / {item.term}
+            {item.cached ? `（${text(locale, "evidenceCached")}）` : ""}
+            <ul>
+              {item.sources.map((source) => (
+                <li key={source.url || source.title}>
+                  {source.title || source.url} / {shown(locale, source.license)} / {shown(locale, source.copyright)} / {shown(locale, source.created)}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function shown(locale: Locale, value: string | undefined): string {
+  const textValue = (value || "").trim();
+  if (!textValue || textValue === "unknown") {
+    return text(locale, "unknown");
+  }
+  return textValue;
 }

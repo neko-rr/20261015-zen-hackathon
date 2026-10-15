@@ -5,6 +5,7 @@ import re
 from typing import Any
 
 from app.jev_client import ACT_THRESHOLD, ask, jev_available, read_noul
+from app.term import latest_year
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,6 @@ _LICENSE = re.compile(
     r"Public Domain|パブリックドメイン|クリエイティブ・コモンズ[^。\n]{0,40})",
     re.IGNORECASE,
 )
-_CREATED = re.compile(r"((?:19|20)\d{2}年?)")
 _COPYRIGHT = re.compile(r"((?:©|\(c\)|Copyright|著作権)[^\n。]{0,80})", re.IGNORECASE)
 
 _KIND_LABEL = {
@@ -119,7 +119,7 @@ def _group(chunks: list[dict[str, str]]) -> list[dict[str, Any]]:
                 "spans": {
                     # 自作は第三者ライセンスを拾わない
                     "license": "" if kind == "own_work" else _first(_LICENSE, text),
-                    "created": _first(_CREATED, text),
+                    "created": str(latest_year(text) or ""),
                     "copyright": "" if kind == "own_work" else _first(_COPYRIGHT, text),
                 },
             }

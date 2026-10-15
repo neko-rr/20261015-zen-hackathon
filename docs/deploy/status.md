@@ -24,7 +24,20 @@
 
 死活はデプロイ後に `GET {APIのURL}/health` で確認する。
 
+## Firestore
+
+| 項目 | 値 |
+|------|-----|
+| データベース | `(default)` |
+| 場所 | `asia-northeast2` |
+| モード | Native |
+
+クライアント SDK からは読まない。API のサービスアカウント（ADC）だけが書く。メタデータの書き込みは確認済み。
+
+## 請求
+
+`gcloud billing projects describe` では請求リンクは有効。一方、バケット `illustration-support-photos` へのオブジェクト作成は、請求先アカウントが closed のため 403 になる。ファイルをクラウドに置く前に、請求コンソールで請求先を再開するか、開いている請求先を付け直す。
+
 ## まだ無いもの（構成上）
 
-- 画面の Cloud Run（`apps/web` に Dockerfile が無い場合）
-- Firestore のデータベース
+- 画面の Cloud Run サービスそのもの（`apps/web/Dockerfile` はある。出すと `illustration-web`）

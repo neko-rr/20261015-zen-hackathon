@@ -106,15 +106,18 @@ _MODEL_CANDIDATES = [
 _detector = None
 _detector_failed = False
 MAX_POSES = 4
+# これより小さい人は、元画像から切り出して関節を取り直す
+_SMALL_SPAN = 0.45
+_CROP_MARGIN = 0.45
 
 
 def empty_pose() -> dict[str, Any]:
     return {"landmarks": [], "edges": [], "muscles": [], "people": []}
 
 
-def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
-    """画像から姿勢を推定する。取れなければ空。"""
-    if not image:
+def estimate_pose(image: bytes, mime_type: str, pixels: Any | None = None) -> dict[str, Any]:
+    """画像から姿勢を推定する。取れなければ空。pixels があれば再デコードしない。"""
+    if not image and pixels is None:
         return empty_pose()
     detector = _get_detector()
     if detector is None:
@@ -127,18 +130,17 @@ def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
         return empty_pose()
 
     try:
-        pixels = _decode_pixels(image)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=pixels)
-        result = detector.detect(mp_image)
+        if pixels is None:
+            pixels = _decode_pixels(image)
+        people = _detect_people(detector, mp, pixels)
+        if _scene_is_distant(people):
+            people = _merge_people(people, _detect_tiles(detector, mp, pixels))
+        people = [_refine_small(detector, mp, pixels, person) for person in people]
+        people = order_people(_dedupe(people))[:MAX_POSES]
     except Exception:
         logger.exception("pose detect failed")
         return empty_pose()
 
-    if not result.pose_landmarks:
-        return empty_pose()
-
-    people = order_people([_one_pose(raw) for raw in result.pose_landmarks[:MAX_POSES]])
-    people = [item for item in people if item["landmarks"]]
     if not people:
         return empty_pose()
     first = people[0]
@@ -149,6 +151,29 @@ def estimate_pose(image: bytes, mime_type: str) -> dict[str, Any]:
         "muscles": first["muscles"],
         "people": people,
     }
+
+
+def map_person_from_crop(
+    person: dict[str, Any],
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    width: int,
+    height: int,
+) -> dict[str, Any]:
+    """切り出し画像の関節を、元画像の 0〜1 に戻す。"""
+    if width <= 0 or height <= 0:
+        return person
+    crop_w = max(right - left, 1)
+    crop_h = max(bottom - top, 1)
+    landmarks: list[dict[str, float | str]] = []
+    for item in person.get("landmarks") or []:
+        mapped = dict(item)
+        mapped["x"] = _unit(left / width + float(item["x"]) * crop_w / width)
+        mapped["y"] = _unit(top / height + float(item["y"]) * crop_h / height)
+        landmarks.append(mapped)
+    return _pack(landmarks)
 
 
 def order_people(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -173,7 +198,11 @@ def _one_pose(raw: Any) -> dict[str, Any]:
                 "visibility": visibility,
             }
         )
-    by_index = {int(item["index"]): item for item in landmarks}
+    return _pack(landmarks)
+
+
+def _pack(landmarks: list[dict[str, float | str]]) -> dict[str, Any]:
+    by_index = {int(item["index"]): item for item in landmarks if "index" in item}
     edges: list[dict[str, float | int]] = []
     for start, end in POSE_EDGES:
         if start not in by_index or end not in by_index:
@@ -191,6 +220,122 @@ def _one_pose(raw: Any) -> dict[str, Any]:
             }
         )
     return {"landmarks": landmarks, "edges": edges, "muscles": _muscle_labels(by_index)}
+
+
+def parts_from_landmarks(landmarks: list[dict[str, Any]]) -> dict[str, Any]:
+    """向きや左右を直したあと、骨格の線と筋肉の位置を作り直す。"""
+    packed = _pack(landmarks)
+    return {"edges": packed["edges"], "muscles": packed["muscles"]}
+
+
+def _detect_people(detector: Any, mp: Any, pixels: Any) -> list[dict[str, Any]]:
+    if pixels is None or getattr(pixels, "size", 0) == 0:
+        return []
+    image = mp.Image(image_format=mp.ImageFormat.SRGB, data=pixels)
+    result = detector.detect(image)
+    if not result.pose_landmarks:
+        return []
+    return [item for item in (_one_pose(raw) for raw in result.pose_landmarks[:MAX_POSES]) if item["landmarks"]]
+
+
+def _scene_is_distant(people: list[dict[str, Any]]) -> bool:
+    """誰もいない、または写っている人が枠より小さい。"""
+    if not people:
+        return True
+    return max(_span_y(person) for person in people) < _SMALL_SPAN
+
+
+def _span_y(person: dict[str, Any]) -> float:
+    ys = [float(item["y"]) for item in person.get("landmarks") or []]
+    if len(ys) < 2:
+        return 0.0
+    return max(ys) - min(ys)
+
+
+def _detect_tiles(detector: Any, mp: Any, pixels: Any) -> list[dict[str, Any]]:
+    """全体で小さい人を、重なる4区画で探す。"""
+    height, width = pixels.shape[:2]
+    found: list[dict[str, Any]] = []
+    span = 0.62
+    for row in (0.0, 0.38):
+        for col in (0.0, 0.38):
+            left = int(col * width)
+            top = int(row * height)
+            right = min(width, int((col + span) * width))
+            bottom = min(height, int((row + span) * height))
+            crop = _contiguous(pixels[top:bottom, left:right])
+            for person in _detect_people(detector, mp, crop):
+                found.append(map_person_from_crop(person, left, top, right, bottom, width, height))
+    return found
+
+
+def _refine_small(detector: Any, mp: Any, pixels: Any, person: dict[str, Any]) -> dict[str, Any]:
+    """小さい人だけ、余裕を付けた範囲を元画像から切り出して取り直す。"""
+    if _span_y(person) >= _SMALL_SPAN:
+        return person
+    height, width = pixels.shape[:2]
+    box = _crop_box(person, width, height)
+    if box is None:
+        return person
+    left, top, right, bottom = box
+    if (right - left) * (bottom - top) > 0.8 * width * height:
+        return person
+    crop = _contiguous(pixels[top:bottom, left:right])
+    found = _detect_people(detector, mp, crop)
+    if not found:
+        return person
+    best = max(found, key=lambda item: len(item["landmarks"]))
+    mapped = map_person_from_crop(best, left, top, right, bottom, width, height)
+    if len(mapped["landmarks"]) < max(4, len(person["landmarks"]) // 2):
+        return person
+    return mapped
+
+
+def _crop_box(person: dict[str, Any], width: int, height: int) -> tuple[int, int, int, int] | None:
+    landmarks = person.get("landmarks") or []
+    if not landmarks or width <= 0 or height <= 0:
+        return None
+    xs = [float(item["x"]) for item in landmarks]
+    ys = [float(item["y"]) for item in landmarks]
+    pad_x = max(max(xs) - min(xs), 0.08) * _CROP_MARGIN
+    pad_y = max(max(ys) - min(ys), 0.08) * _CROP_MARGIN
+    left = max(0, int((min(xs) - pad_x) * width))
+    top = max(0, int((min(ys) - pad_y) * height))
+    right = min(width, int((max(xs) + pad_x) * width))
+    bottom = min(height, int((max(ys) + pad_y) * height))
+    if right - left < 32 or bottom - top < 32:
+        return None
+    return left, top, right, bottom
+
+
+def _merge_people(primary: list[dict[str, Any]], extra: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return _dedupe(primary + extra)
+
+
+def _dedupe(people: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    kept: list[dict[str, Any]] = []
+    for person in people:
+        if not person.get("landmarks"):
+            continue
+        anchor = _anchor_x(person)
+        mid_y = _anchor_y(person)
+        if any(abs(anchor - _anchor_x(item)) < 0.12 and abs(mid_y - _anchor_y(item)) < 0.12 for item in kept):
+            continue
+        kept.append(person)
+    return kept
+
+
+def _anchor_y(person: dict[str, Any]) -> float:
+    landmarks = person.get("landmarks") or []
+    if not landmarks:
+        return 0.0
+    return sum(float(item["y"]) for item in landmarks) / len(landmarks)
+
+
+def _contiguous(pixels: Any) -> Any:
+    import numpy as np
+
+    return np.ascontiguousarray(pixels)
 
 
 def _anchor_x(person: dict[str, Any]) -> float:
@@ -253,6 +398,11 @@ def _muscle_labels(by_index: dict[int, dict[str, float | str | int]]) -> list[di
                 continue
         adjusted.append(item)
     return adjusted
+
+
+def warm() -> None:
+    """起動時にモデルを読む。失敗しても解析は続けられる。"""
+    _get_detector()
 
 
 def _get_detector() -> Any:

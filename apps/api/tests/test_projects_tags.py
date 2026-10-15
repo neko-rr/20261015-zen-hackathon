@@ -1,5 +1,7 @@
 """案件・タグ付き資料のテスト。"""
 
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -10,7 +12,11 @@ client = TestClient(app)
 
 def _session() -> TestClient:
     started = TestClient(app)
-    assert started.post("/sessions").status_code == 200
+    response = started.post(
+        "/accounts",
+        json={"username": f"p{uuid4().hex[:12]}", "password": "long-password"},
+    )
+    assert response.status_code == 200
     return started
 
 

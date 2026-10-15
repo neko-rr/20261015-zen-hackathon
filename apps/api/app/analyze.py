@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from app.errors import system_error
+from app.facing import orient_person
 from app.hands import estimate_hands
-from app.label import name_subjects
+from app.limbs import refine_limbs
 from app.mannequin import build_mannequin
-from app.pose import estimate_pose
+from app.pose import estimate_pose, parts_from_landmarks
 from app.segment import segment_person
 from app.settings import Settings
 
@@ -21,10 +23,9 @@ def analyze_image(settings: Settings, image: bytes, mime_type: str) -> dict[str,
         raise system_error("analysis_failed", "解析に失敗しました。")
     if not mime_type:
         raise system_error("analysis_failed", "解析に失敗しました。")
+    pixels = _shared_pixels(image)
     try:
-        pose = estimate_pose(image, mime_type)
-        segment = segment_person(image, mime_type)
-        hands = estimate_hands(image, mime_type)
+        pose, segment, hands = _observe_parallel(image, mime_type, pixels)
     except Exception as exc:
         logger.exception("observe failed vision=mediapipe")
         raise system_error("analysis_failed", "解析に失敗しました。") from exc
@@ -43,19 +44,30 @@ def analyze_image(settings: Settings, image: bytes, mime_type: str) -> dict[str,
     built: list[dict[str, Any]] = []
     for index, person in enumerate(raw_people):
         person_hands = assigned[index] if index < len(assigned) else []
-        mannequin = build_mannequin(person.get("landmarks") or [], person_hands, aspect=aspect)
+        landmarks, facing = orient_person(
+            settings,
+            image,
+            mime_type,
+            list(person.get("landmarks") or []),
+        )
+        landmarks, limbs = refine_limbs(settings, image, mime_type, landmarks)
+        parts = parts_from_landmarks(landmarks)
+        mannequin = build_mannequin(landmarks, person_hands, aspect=aspect)
+        mannequin["facing"] = facing
+        mannequin["limbs"] = limbs
         built.append(
             {
                 "object_id": f"obj_{index + 1}",
-                "landmarks": person.get("landmarks") or [],
-                "edges": person.get("edges") or [],
-                "muscles": person.get("muscles") or [],
+                "landmarks": landmarks,
+                "edges": parts["edges"],
+                "muscles": parts["muscles"],
                 "hands": person_hands,
                 "mannequin": mannequin,
+                "facing": facing,
+                "limbs": limbs,
             }
         )
-    named = name_subjects(settings, image, mime_type)
-    objects = _objects(segment, built, named)
+    objects = _objects(segment, built, {"people": [], "others": []})
     first = built[0] if built else None
     muscles: list[dict[str, Any]] = []
     for index, person in enumerate(built):
@@ -85,6 +97,77 @@ def analyze_image(settings: Settings, image: bytes, mime_type: str) -> dict[str,
         inferred,
     )
     return {"objects": objects, "pose": pose_out}
+
+
+def apply_names(objects: list[dict[str, Any]], named: dict[str, Any]) -> list[dict[str, Any]]:
+    """既にある人の呼び方を差し替え、場所や道具を足す。関節は変えない。"""
+    people = [item for item in objects if item.get("kind") == "person"]
+    labels = _people_labels(named, len(people))
+    rows: list[dict[str, Any]] = []
+    for index, person in enumerate(people):
+        row = dict(person)
+        if index < len(labels):
+            row["label"] = labels[index]
+        public_name, work_title = _meta(named, index)
+        row["public_name"] = public_name
+        row["work_title"] = work_title
+        rows.append(row)
+    for item in named.get("others") or []:
+        rows.append(
+            {
+                "object_id": f"obj_{len(rows) + 1}",
+                "label": item["label"],
+                "public_name": "",
+                "work_title": str(item.get("work_title") or ""),
+                "kind": item["kind"],
+                "is_primary": not rows,
+                "box": None,
+                "joints": [],
+                "muscles": [],
+                "contour": [],
+            }
+        )
+    return rows
+
+
+def _observe_parallel(
+    image: bytes,
+    mime_type: str,
+    pixels: Any | None,
+) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    """姿勢・輪郭・手を同時に取る。"""
+    def pose_job() -> dict[str, Any]:
+        view = None if pixels is None else pixels.copy()
+        return estimate_pose(image, mime_type, view)
+
+    def segment_job() -> dict[str, Any]:
+        view = None if pixels is None else pixels.copy()
+        return segment_person(image, mime_type, view)
+
+    def hands_job() -> list[dict[str, Any]]:
+        view = None if pixels is None else pixels.copy()
+        return estimate_hands(image, mime_type, view)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        pose_future = pool.submit(pose_job)
+        segment_future = pool.submit(segment_job)
+        hands_future = pool.submit(hands_job)
+        return pose_future.result(), segment_future.result(), hands_future.result()
+
+
+def _shared_pixels(image: bytes) -> Any | None:
+    """1回だけ RGB にする。失敗したら各検出が自分で読む。"""
+    try:
+        import io
+
+        import numpy as np
+        from PIL import Image
+
+        with Image.open(io.BytesIO(image)) as picture:
+            return np.asarray(picture.convert("RGB"))
+    except Exception:
+        logger.exception("image decode failed")
+        return None
 
 
 def _assign_hands(
@@ -143,6 +226,8 @@ def _objects(
             {
                 "object_id": person.get("object_id") or f"obj_{index + 1}",
                 "label": labels[index] if index < len(labels) else "人",
+                "public_name": _meta(named, index)[0],
+                "work_title": _meta(named, index)[1],
                 "kind": "person",
                 "is_primary": not rows,
                 "box": segment.get("box") if index == 0 else _box_from_landmarks(landmarks),
@@ -156,6 +241,8 @@ def _objects(
             {
                 "object_id": "obj_1",
                 "label": _people_labels(named, 1)[0],
+                "public_name": _meta(named, 0)[0],
+                "work_title": _meta(named, 0)[1],
                 "kind": "person",
                 "is_primary": True,
                 "box": segment.get("box"),
@@ -169,6 +256,8 @@ def _objects(
             {
                 "object_id": f"obj_{len(rows) + 1}",
                 "label": item["label"],
+                "public_name": "",
+                "work_title": str(item.get("work_title") or ""),
                 "kind": item["kind"],
                 "is_primary": not rows,
                 "box": None,
@@ -193,6 +282,19 @@ def _people_labels(named: dict[str, Any], count: int) -> list[str]:
             label = f"左から{index + 1}人目"
         labels.append(label)
     return labels
+
+
+def _meta(named: dict[str, Any], index: int) -> tuple[str, str]:
+    people = list(named.get("people") or [])
+    if not people and (named.get("person_label") or named.get("public_name") or named.get("work_title")):
+        people = [
+            {
+                "public_name": named.get("public_name") or "",
+                "work_title": named.get("work_title") or "",
+            }
+        ]
+    item = people[index] if index < len(people) else {}
+    return str(item.get("public_name") or "").strip(), str(item.get("work_title") or "").strip()
 
 
 def _person_label(named: dict[str, Any]) -> str:

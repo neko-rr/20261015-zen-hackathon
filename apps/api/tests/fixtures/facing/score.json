@@ -1,0 +1,72 @@
+{
+  "passed": 6,
+  "total": 6,
+  "rows": [
+    {
+      "file": "01-front.png",
+      "expected": "front",
+      "mechanical": "front",
+      "decided": "front",
+      "source": "mechanical",
+      "swapped": false,
+      "confidence": 1.0,
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "02-back.png",
+      "expected": "back",
+      "mechanical": "back",
+      "decided": "back",
+      "source": "mechanical",
+      "swapped": false,
+      "confidence": 1.0,
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "03-left.png",
+      "expected": "left",
+      "mechanical": "left",
+      "decided": "left",
+      "source": "agree",
+      "swapped": false,
+      "confidence": 0.552,
+      "landmarks": 27,
+      "ok": true
+    },
+    {
+      "file": "04-right.png",
+      "expected": "right",
+      "mechanical": "right",
+      "decided": "right",
+      "source": "agree",
+      "swapped": false,
+      "confidence": 0.654,
+      "landmarks": 27,
+      "ok": true
+    },
+    {
+      "file": "05-front.png",
+      "expected": "front",
+      "mechanical": "front",
+      "decided": "front",
+      "source": "mechanical",
+      "swapped": false,
+      "confidence": 1.0,
+      "landmarks": 33,
+      "ok": true
+    },
+    {
+      "file": "06-front.png",
+      "expected": "front",
+      "mechanical": "front",
+      "decided": "front",
+      "source": "mechanical",
+      "swapped": false,
+      "confidence": 1.0,
+      "landmarks": 31,
+      "ok": true
+    }
+  ]
+}

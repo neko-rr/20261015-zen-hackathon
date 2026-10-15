@@ -36,26 +36,32 @@ const FINGERS = ["thumb", "index", "middle", "ring", "pinky"] as const;
 
 type Pt = { x: number; y: number; z: number };
 
-/** 頭身 n。頭は 1/n。頭身が大きいほど脚の割合が増える。 */
+/** 頭の長さを 1 とした各部。頭から足までを足すと、その頭身になる。 */
+const CANON: Record<number, Omit<Ratios, "head">> = {
+  4: { neck: 0.2, torso: 1.2, thigh: 0.85, shin: 0.75, upperArm: 0.7, forearm: 0.55, foot: 0.4, hand: 0.45, shoulder: 1.7, hip: 1.45 },
+  5: { neck: 0.25, torso: 1.5, thigh: 1.15, shin: 1.1, upperArm: 0.9, forearm: 0.75, foot: 0.45, hand: 0.55, shoulder: 1.8, hip: 1.5 },
+  6: { neck: 0.3, torso: 1.75, thigh: 1.5, shin: 1.45, upperArm: 1.1, forearm: 0.9, foot: 0.5, hand: 0.65, shoulder: 1.9, hip: 1.5 },
+  7: { neck: 0.33, torso: 2.0, thigh: 1.9, shin: 1.77, upperArm: 1.3, forearm: 1.1, foot: 0.55, hand: 0.72, shoulder: 2.0, hip: 1.55 },
+  8: { neck: 0.35, torso: 2.2, thigh: 2.25, shin: 2.2, upperArm: 1.5, forearm: 1.25, foot: 0.6, hand: 0.8, shoulder: 2.05, hip: 1.55 },
+  9: { neck: 0.33, torso: 2.3, thigh: 2.75, shin: 2.62, upperArm: 1.6, forearm: 1.35, foot: 0.65, hand: 0.85, shoulder: 1.95, hip: 1.45 },
+};
+
+/** 頭身 n。全身の高さを保ったまま、頭を 1/n にし、手足もその頭に合わせる。 */
 function ratiosFor(heads: number): Ratios {
-  const head = 1 / heads;
-  const neck = heads >= 7 ? 0.04 : 0.03;
-  const remain = Math.max(0.96 - head - neck, 0.45);
-  const legShare = Math.min(0.38 + (heads - 4) * 0.028, 0.56);
-  const legs = remain * legShare;
-  const upperArm = 0.12 + (heads - 4) * 0.012;
+  const row = CANON[heads] ?? CANON[8];
+  const unit = 1 / heads;
   return {
-    head,
-    neck,
-    torso: remain - legs,
-    thigh: legs * 0.52,
-    shin: legs * 0.48,
-    upperArm,
-    forearm: upperArm * 0.84,
-    foot: 0.075 + heads * 0.0035,
-    hand: 0.08 + heads * 0.0025,
-    shoulder: 0.22,
-    hip: 0.17,
+    head: unit,
+    neck: row.neck * unit,
+    torso: row.torso * unit,
+    thigh: row.thigh * unit,
+    shin: row.shin * unit,
+    upperArm: row.upperArm * unit,
+    forearm: row.forearm * unit,
+    foot: row.foot * unit,
+    hand: row.hand * unit,
+    shoulder: row.shoulder * unit,
+    hip: row.hip * unit,
   };
 }
 

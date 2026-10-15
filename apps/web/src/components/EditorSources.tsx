@@ -144,20 +144,31 @@ function SourceCard({
           </button>
         ) : null}
       </div>
+      {"rights_code" in source && source.rights_code ? (
+        <p className="hint">
+          {text(locale, "rightsCode")}: {source.rights_code}
+        </p>
+      ) : null}
       {candidate && !favorited ? <p className="hint">{text(locale, "favoriteHint")}</p> : null}
       {showFacts && "created" in source ? (
         <div className="facts">
           <div>
             <span>{text(locale, "license")}</span>
-            <span>{rightLabel(locale, source.license)}</span>
+            <span>{rightLabel(locale, source.license || "unknown")}</span>
           </div>
           <div>
             <span>{text(locale, "created")}</span>
-            <span>{rightLabel(locale, source.created)}</span>
+            <span>{rightLabel(locale, source.created || "unknown")}</span>
           </div>
+          {"protection_until" in source ? (
+            <div>
+              <span>{text(locale, "protectionUntil")}</span>
+              <span>{rightLabel(locale, source.protection_until || "unknown")}</span>
+            </div>
+          ) : null}
           <div>
             <span>{text(locale, "copyright")}</span>
-            <span>{rightLabel(locale, source.copyright)}</span>
+            <span>{rightLabel(locale, source.copyright || "unknown")}</span>
           </div>
         </div>
       ) : null}

@@ -1,6 +1,6 @@
 """物体の呼び方。モデルは呼ばない。"""
 
-from app.analyze import _assign_hands, _objects, _person_label
+from app.analyze import _assign_hands, _objects, _person_label, apply_names
 from app.label import labels_from_text
 
 
@@ -17,7 +17,7 @@ def test_uncertain_public_name_is_dropped() -> None:
     )
     assert named["public_name"] == ""
     assert _person_label(named) == "成人の男性"
-    assert named["others"] == [{"label": "駅のホーム", "kind": "object"}]
+    assert named["others"] == [{"label": "駅のホーム", "kind": "object", "work_title": ""}]
 
 
 def test_fallback_label_is_person_when_naming_is_empty() -> None:
@@ -62,7 +62,7 @@ def test_invalid_kind_and_duplicate_label_are_dropped() -> None:
         '{"label":"何か","kind":"person"},'
         '{"label":"赤い自転車","kind":"object"}]}'
     )
-    assert named["others"] == [{"label": "赤い自転車", "kind": "object"}]
+    assert named["others"] == [{"label": "赤い自転車", "kind": "object", "work_title": ""}]
 
 
 def test_two_people_are_separate_dolls_from_the_left() -> None:
@@ -84,6 +84,28 @@ def test_two_people_are_separate_dolls_from_the_left() -> None:
     assert rows[0]["contour"]
     assert rows[1]["contour"] == []
     assert rows[1]["box"]["x"] == 0.8
+
+
+def test_names_arrive_without_moving_joints() -> None:
+    before = [
+        {
+            "object_id": "obj_1",
+            "label": "人",
+            "kind": "person",
+            "is_primary": True,
+            "box": None,
+            "joints": [{"name": "nose", "x": 0.2, "y": 0.3}],
+            "muscles": [],
+            "contour": [],
+        }
+    ]
+    after = apply_names(
+        before,
+        {"people": [{"label": "成人の女性、白いシャツ", "public_name": ""}], "others": [{"label": "駅のホーム", "kind": "object"}]},
+    )
+    assert after[0]["label"] == "成人の女性、白いシャツ"
+    assert after[0]["joints"] == before[0]["joints"]
+    assert after[1]["label"] == "駅のホーム"
 
 
 def test_hands_follow_the_nearest_wrist() -> None:

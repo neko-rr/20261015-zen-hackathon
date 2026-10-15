@@ -3,22 +3,24 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AccountGate, SignedIn } from "@/components/AccountGate";
+import { hydrateAccountPrefs, LOCALE_KEY } from "@/lib/accountPrefs";
 import {
   ApiError,
   createProject,
   deleteMaterial,
   deleteProject,
-  ensureSession,
+  currentSession,
   listMaterials,
   listProjects,
   patchMaterial,
   uploadMaterials,
   type Material,
   type Project,
+  type SessionInfo,
 } from "@/lib/api";
 import { sanitizeLocale, text, type Locale } from "@/lib/messages";
 
-const LOCALE_KEY = "drawref:locale";
 const ACCEPT =
   ".jpg,.jpeg,.png,.webp,.pdf,.docx,.xlsx,.md,.txt,image/jpeg,image/png,image/webp,application/pdf,text/plain,text/markdown";
 
@@ -87,7 +89,9 @@ function parseTags(raw: string): string[] {
 
 export default function LibraryPage() {
   const [locale, setLocale] = useState<Locale>("ja");
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [accountName, setAccountName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [materials, setMaterials] = useState<Material[]>([]);
@@ -131,8 +135,18 @@ export default function LibraryPage() {
     document.documentElement.lang = next;
     void (async () => {
       try {
-        await ensureSession();
+        const current = await currentSession();
+        if (!current) {
+          return;
+        }
+        setAccountName(current.username || "");
         setSessionReady(true);
+        try {
+          const prefs = await hydrateAccountPrefs();
+          setLocale(prefs.locale);
+        } catch (prefError) {
+          console.error("preference load failed", prefError);
+        }
         const [materialBody, projectItems] = await Promise.all([listMaterials(""), listProjects()]);
         setMaterials(materialBody.materials);
         setKnownTags(materialBody.tags);
@@ -144,9 +158,34 @@ export default function LibraryPage() {
         );
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : text(next, "sessionNeeded"));
+      } finally {
+        setSessionChecked(true);
       }
     })();
   }, []);
+
+  function applyLocale(next: Locale) {
+    setLocale(next);
+    localStorage.setItem(LOCALE_KEY, next);
+    document.documentElement.lang = next;
+  }
+
+  async function enterAccount(session: SessionInfo) {
+    setAccountName(session.username || "");
+    setSessionReady(true);
+    setError("");
+    try {
+      const prefs = await hydrateAccountPrefs();
+      setLocale(prefs.locale);
+    } catch (prefError) {
+      console.error("preference load failed", prefError);
+    }
+    try {
+      await refresh("");
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : text(locale, "sessionNeeded"));
+    }
+  }
 
   async function onFiles(kind: "own_work" | "third_party", files: File[]) {
     if (!sessionReady) {
@@ -243,6 +282,18 @@ export default function LibraryPage() {
     }
   }
 
+  if (!sessionChecked) {
+    return (
+      <main className="gate-wrap">
+        <p className="hint">{text(locale, "checkingSession")}</p>
+      </main>
+    );
+  }
+
+  if (!sessionReady) {
+    return <AccountGate locale={locale} onLocale={applyLocale} onSignedIn={(session) => void enterAccount(session)} />;
+  }
+
   return (
     <main className="app">
       <header className="top">
@@ -252,13 +303,21 @@ export default function LibraryPage() {
           <p className="hint">{text(locale, "libraryHint")}</p>
         </div>
         <div className="prefs">
+          <SignedIn
+            locale={locale}
+            username={accountName}
+            onLoggedOut={() => {
+              setAccountName("");
+              setSessionReady(false);
+            }}
+          />
+          <Link href="/licenses">{text(locale, "licenses")}</Link>
           <Link className="lookup" href="/">
             {text(locale, "backStudio")}
           </Link>
         </div>
       </header>
 
-      {!sessionReady ? <p className="hint">{text(locale, "sessionNeeded")}</p> : null}
       {busy ? <p>{text(locale, "uploading")}</p> : null}
       {error ? <p className="error">{error}</p> : null}
 

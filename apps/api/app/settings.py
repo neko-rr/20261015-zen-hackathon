@@ -20,6 +20,7 @@ def _load_local_env() -> None:
 _load_local_env()
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 # これ未満の枠と関節は画面に出さない
 MIN_CONFIDENCE = 0.5

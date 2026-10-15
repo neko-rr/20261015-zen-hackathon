@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "updated_note": "外部サービスと同梱モデルの表示メモ（手）。OSS 依存は generate_third_party_notices.py が集める。",
+  "services": [
+    {
+      "id": "gemini",
+      "name_ja": "Gemini（Google Cloud）",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "写真の呼び方、出典検索、言葉から関節の角度に使う。呼び出しは API サーバーだけ。ブラウザにキーは出さない。",
+      "docs_url": "https://cloud.google.com/vertex-ai/generative-ai/docs"
+    },
+    {
+      "id": "cloud_vision",
+      "name_ja": "Cloud Vision Web Detection",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "同じ画像の掲載ページを残す。権利者の断定には使わない。",
+      "docs_url": "https://cloud.google.com/vision/docs/detecting-web"
+    },
+    {
+      "id": "japan_search",
+      "name_ja": "ジャパンサーチ簡易 Web API",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "題名か作者があるとき、権利コードだけを出典に足す。ライセンス文は作らない。キーは不要。",
+      "docs_url": "https://jpsearch.go.jp/static/developer/webapi/ja.html"
+    },
+    {
+      "id": "mediapipe_models",
+      "name_ja": "MediaPipe 同梱モデル",
+      "attribution_required": false,
+      "status": "active",
+      "note_ja": "姿勢・手・輪郭用の .task と .tflite を API コンテナに同梱する。パッケージ自体のライセンスは OSS 一覧の mediapipe を見る。",
+      "docs_url": "https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker"
+    },
+    {
+      "id": "mixamo",
+      "name_ja": "Mixamo の体（FBX）",
+      "attribution_required": true,
+      "status": "active",
+      "note_ja": "画面の 3D 体は public/dolls の Mixamo FBX（X Bot と人物）。Adobe Mixamo の利用条件に従う。このアプリのソースの OSS ライセンスではない。",
+      "docs_url": "https://www.mixamo.com/"
+    }
+  ]
+}

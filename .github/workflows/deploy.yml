@@ -1,9 +1,12 @@
-# 開発中は push では動かない。出すときは Actions の手動実行か scripts/deploy.ps1。
-# GitHub からの手動実行には変数が必要: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SA
+# main への push と手動実行。テストが通ってから Cloud Run に出す。
+# GitHub 変数: GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_DEPLOYER_SA
+# GitHub secret（任意）: SESSION_SIGNING_SECRET。無いときは Cloud Run に既にある値を残す。
 name: deploy
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 env:
   PROJECT_ID: illustration-support
@@ -11,7 +14,13 @@ env:
   RUNTIME_SA: run-runtime@illustration-support.iam.gserviceaccount.com
 
 jobs:
+  test:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -27,7 +36,13 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
 
       - name: Deploy API
+        env:
+          SESSION_SIGNING_SECRET: ${{ secrets.SESSION_SIGNING_SECRET }}
         run: |
+          VARS="GOOGLE_CLOUD_PROJECT=illustration-support,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_ENTERPRISE=True,GCS_BUCKET=illustration-support-photos,SESSION_COOKIE_SECURE=true"
+          if [ -n "$SESSION_SIGNING_SECRET" ]; then
+            VARS="${VARS},SESSION_SIGNING_SECRET=${SESSION_SIGNING_SECRET}"
+          fi
           gcloud run deploy illustration-api \
             --source apps/api \
             --region "$REGION" \
@@ -35,10 +50,9 @@ jobs:
             --service-account "$RUNTIME_SA" \
             --allow-unauthenticated \
             --max-instances 2 \
-            --set-env-vars "GOOGLE_CLOUD_PROJECT=illustration-support,GOOGLE_CLOUD_LOCATION=global,GOOGLE_GENAI_USE_ENTERPRISE=True,GCS_BUCKET=illustration-support-photos"
+            --update-env-vars "$VARS"
 
-      - name: Deploy web when Dockerfile exists
-        if: hashFiles('apps/web/Dockerfile') != ''
+      - name: Deploy web
         run: |
           API_URL=$(gcloud run services describe illustration-api --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')
           gcloud run deploy illustration-web \
@@ -47,4 +61,9 @@ jobs:
             --project "$PROJECT_ID" \
             --allow-unauthenticated \
             --max-instances 2 \
-            --set-env-vars "NEXT_PUBLIC_API_BASE_URL=${API_URL}"
+            --update-env-vars "API_BASE_URL=${API_URL},NEXT_PUBLIC_API_BASE_URL=/drawref-api"
+          WEB_URL=$(gcloud run services describe illustration-web --region "$REGION" --project "$PROJECT_ID" --format='value(status.url)')
+          gcloud run services update illustration-api \
+            --region "$REGION" \
+            --project "$PROJECT_ID" \
+            --update-env-vars "CORS_ORIGINS=${WEB_URL}"

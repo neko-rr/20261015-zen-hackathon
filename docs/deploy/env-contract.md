@@ -21,17 +21,18 @@
 
 | キー | 区分 | 公開 | 備考 |
 |------|------|------|------|
-| `NEXT_PUBLIC_API_BASE_URL` | 画面があるとき必須 | 公開可 | 末尾スラッシュなし。ローカルは `http://127.0.0.1:8000` |
+| `NEXT_PUBLIC_API_BASE_URL` | 画面があるとき必須 | 公開可 | 末尾スラッシュなし。ローカルは `http://127.0.0.1:8000`。本番イメージは `/drawref-api`（画面と同じオリジン） |
+| `API_BASE_URL` | 本番の画面で必須 | 秘密ではない | Next が `/drawref-api` を転送する API の URL。ブラウザのコードには入れない |
 | `CORS_ORIGINS` | 本番必須 | 秘密ではない | 本番は公開 Web のオリジンだけ。localhost を残さない |
 | `GOOGLE_CLOUD_PROJECT` | Gemini を GCP 経由で使うとき必須 | 秘密ではない | `illustration-support` |
 | `GOOGLE_CLOUD_LOCATION` | 同上 | 秘密ではない | 例: `global` |
 | `GOOGLE_GENAI_USE_ENTERPRISE` | 同上 | 秘密ではない | `True` で Agent Platform 側 |
-| `GOOGLE_API_KEY` | ローカル試作のみ任意 | 秘密 | 本番の既定は ADC。Git 禁止 |
-| `GCS_BUCKET` | 写真・資料をクラウド保存するとき必須 | 秘密ではない | `illustration-support-photos`。未設定時は API ローカル `.data` |
+| `GOOGLE_API_KEY` | 意味検索を使うとき必須。ローカル試作でも可 | 秘密 | Gemini Developer API のキー。File Search はこれか `GEMINI_API_KEY`。ADC ではストアを作れない。Git 禁止。Cloud Vision と Speech-to-Text の本番は ADC のまま |
+| `GCS_BUCKET` | 写真・資料をクラウド保存するとき必須 | 秘密ではない | `illustration-support-photos`。設定時は実体をこのバケット、メタデータを同じプロジェクトの Firestore `(default)` へ書く。未設定時はプロセス内と API ローカル `.data` |
 | `TYPESAFE_API_KEY` | 検める・確かめるとき必須 | 秘密 | 未設定ならその段は飛ばす。枠は Gemini の確信度のまま。権利は `unknown` |
 | `SESSION_SIGNING_SECRET` | セッション必須 | 秘密 | Cookie の HMAC 署名。十分長いランダム文字列。Git 禁止 |
 | `SESSION_COOKIE_SECURE` | 任意 | 秘密ではない | `true` なら Secure 属性。本番 HTTPS では `true`。ローカル http は `false` または未設定 |
-| `RAG_ENABLED` | 任意 | 秘密ではない | `true` で Vertex AI RAG Engine。未設定／`false` はローカル簡易索引 |
+| `RAG_ENABLED` | 任意 | 秘密ではない | `true` で Gemini API の File Search（人ごとにストア1つ）。Developer API の `GEMINI_API_KEY` か `GOOGLE_API_KEY` が要る。Enterprise の ADC ではストアを作れない。未設定／`false`、またはキーが無いときは Firestore の索引テキストを単語一致。RAG Engine は使わない |
 
 Gemini の呼び出しはサーバーだけ。公式: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/sdks/overview
 

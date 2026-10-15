@@ -27,6 +27,7 @@ from app.material_store import (
     remove_material,
     update_material,
 )
+from app.cloud_config import cloud_persistence_enabled
 from app.project_store import get_project
 from app.rag import material_dir, remove_index_entry, upsert_index_entry
 
@@ -100,12 +101,28 @@ def register_material(
     try:
         index_text, derivative, page = prepare_index_payload(media_type, safe_name, raw)
         index_text = _with_tags(index_text, clean_tags)
-        folder = material_dir(owner_id, kind, doc_id)
-        original_path = folder / safe_name
-        original_path.write_bytes(raw)
-        if derivative:
-            (folder / "index.jpg").write_bytes(derivative)
-        (folder / "index.txt").write_text(index_text, encoding="utf-8")
+        if cloud_persistence_enabled():
+            from app.object_store import material_object_name, put_bytes
+
+            put_bytes(material_object_name(owner_id, kind, doc_id, safe_name), raw, mime)
+            put_bytes(
+                material_object_name(owner_id, kind, doc_id, "index.txt"),
+                index_text.encode("utf-8"),
+                "text/plain; charset=utf-8",
+            )
+            if derivative:
+                put_bytes(
+                    material_object_name(owner_id, kind, doc_id, "index.jpg"),
+                    derivative,
+                    "image/jpeg",
+                )
+        else:
+            folder = material_dir(owner_id, kind, doc_id)
+            original_path = folder / safe_name
+            original_path.write_bytes(raw)
+            if derivative:
+                (folder / "index.jpg").write_bytes(derivative)
+            (folder / "index.txt").write_text(index_text, encoding="utf-8")
     except business_error:
         raise
     except Exception as exc:
@@ -129,6 +146,7 @@ def register_material(
     }
     add_material(owner_id, meta)
     _reindex(owner_id, meta)
+    _sync_file_search(owner_id, meta)
     logger.info(
         "material_saved kind=%s media=%s bytes=%s",
         kind,
@@ -169,7 +187,29 @@ def patch_material(
     if updated is None:
         raise business_error("object_not_found", "資料が見つかりません。")
     _reindex(owner_id, updated)
+    _sync_file_search(owner_id, updated)
     return _public_meta(updated)
+
+
+def read_material(owner_id: str, doc_id: str) -> dict[str, Any]:
+    item = get_material(owner_id, doc_id)
+    if item is None:
+        raise business_error("object_not_found", "資料が見つかりません。")
+    public = _public_meta(item)
+    public["text"] = str(item.get("index_text") or "")[:8000]
+    public["citation"] = _public_citation(item.get("citation"))
+    return public
+
+
+def _public_citation(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict) or not raw.get("searched_at"):
+        return None
+    return {
+        "term": str(raw.get("term") or ""),
+        "searched_at": str(raw.get("searched_at") or ""),
+        "summary": str(raw.get("summary") or ""),
+        "sources": list(raw.get("sources") or [])[:8],
+    }
 
 
 def list_owner_materials(owner_id: str, project_id: str = "") -> list[dict[str, Any]]:
@@ -198,11 +238,19 @@ def delete_material(owner_id: str, doc_id: str) -> None:
     if removed is None:
         raise business_error("object_not_found", "資料が見つかりません。")
     remove_index_entry(owner_id, doc_id)
+    _drop_file_search(owner_id, str(removed.get("file_search_document") or ""))
     try:
-        folder = material_dir(owner_id, removed["material_kind"], doc_id)
-        for path in folder.glob("*"):
-            path.unlink(missing_ok=True)
-        folder.rmdir()
+        if cloud_persistence_enabled():
+            from app.object_store import delete_prefix, material_prefix
+
+            delete_prefix(
+                material_prefix(owner_id, removed["material_kind"], doc_id)
+            )
+        else:
+            folder = material_dir(owner_id, removed["material_kind"], doc_id)
+            for path in folder.glob("*"):
+                path.unlink(missing_ok=True)
+            folder.rmdir()
     except Exception:
         logger.exception("material file cleanup failed")
 
@@ -226,8 +274,30 @@ def _reindex(owner_id: str, meta: dict[str, Any]) -> None:
             "text": meta.get("index_text") or meta.get("title") or "",
             "project_id": meta.get("project_id") or "",
             "tags": list(meta.get("tags") or []),
+            "file_search_document": meta.get("file_search_document") or "",
         },
     )
+
+
+def _sync_file_search(owner_id: str, meta: dict[str, Any]) -> None:
+    """意味検索へ上げる。失敗しても資料の保存は残し、単語検索に戻る。"""
+    from app.file_search import index_material, remove_document
+
+    previous = str(meta.get("file_search_document") or "")
+    name = index_material(owner_id, meta)
+    if not name:
+        return
+    if previous and previous != name:
+        remove_document(owner_id, previous)
+    meta["file_search_document"] = name
+    update_material(owner_id, meta["doc_id"], {"file_search_document": name})
+    _reindex(owner_id, meta)
+
+
+def _drop_file_search(owner_id: str, document_name: str) -> None:
+    from app.file_search import remove_document
+
+    remove_document(owner_id, document_name)
 
 
 def _safe_filename(filename: str) -> str:
