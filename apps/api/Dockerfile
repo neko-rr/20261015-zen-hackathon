@@ -2,8 +2,17 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# MediaPipe は OpenCV 経由で libxcb / libGL を読む。slim には入っていない。
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends curl \
+  && apt-get install -y --no-install-recommends \
+    curl \
+    libglib2.0-0 \
+    libgl1 \
+    libgomp1 \
+    libxcb1 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
   && mkdir -p /app/app/models \
   && curl -fsSL -o /app/app/models/pose_landmarker_full.task \
     "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task" \

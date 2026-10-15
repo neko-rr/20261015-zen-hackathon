@@ -27,6 +27,7 @@
 | `GOOGLE_CLOUD_PROJECT` | Gemini を GCP 経由で使うとき必須 | 秘密ではない | `illustration-support` |
 | `GOOGLE_CLOUD_LOCATION` | 同上 | 秘密ではない | 例: `global` |
 | `GOOGLE_GENAI_USE_ENTERPRISE` | 同上 | 秘密ではない | `True` で Agent Platform 側 |
+| `GEMINI_MODEL` | 出典検索・呼び方で必須 | 秘密ではない | モデル ID。公式一覧から選ぶ。リポジトリには書かない。Cloud Run の API サービスに置く |
 | `GOOGLE_API_KEY` | 意味検索を使うとき必須。ローカル試作でも可 | 秘密 | Gemini Developer API のキー。File Search はこれか `GEMINI_API_KEY`。ADC ではストアを作れない。Git 禁止。Cloud Vision と Speech-to-Text の本番は ADC のまま |
 | `GCS_BUCKET` | 写真・資料をクラウド保存するとき必須 | 秘密ではない | `illustration-support-photos`。設定時は実体をこのバケット、メタデータを同じプロジェクトの Firestore `(default)` へ書く。未設定時はプロセス内と API ローカル `.data` |
 | `TYPESAFE_API_KEY` | 検める・確かめるとき必須 | 秘密 | 未設定ならその段は飛ばす。枠は Gemini の確信度のまま。権利は `unknown` |
