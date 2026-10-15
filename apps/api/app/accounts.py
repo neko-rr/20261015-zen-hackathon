@@ -16,7 +16,7 @@ from app.passwords import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 
-# 審査用。提出文と画面に出す公開のテストアカウント。一般利用者とは owner が別。
+# 審査用。一般利用者とは owner が別。パスワードは画面とリポジトリに出さない。
 DEMO_USERNAME = "reviewer"
 DEMO_PASSWORD = "review-draw-2026"
 

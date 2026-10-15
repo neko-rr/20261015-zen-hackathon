@@ -120,7 +120,6 @@ export function AccountGate({
           </p>
         ) : null}
         <p className="hint">{text(locale, "identityHint")}</p>
-        <p className="hint">{text(locale, "reviewerHint")}</p>
         {error ? <p className="error">{error}</p> : null}
         <button className="gate-submit" type="submit" disabled={busy || !username.trim() || !password}>
           {busy ? text(locale, "loggingIn") : text(locale, mode === "login" ? "login" : "register")}
