@@ -26,6 +26,7 @@ import {
   type SpokenPoseOption,
   type Project,
   type WebPage,
+  type WebImage,
 } from "@/lib/api";
 import {
   buildExportMarkdown,
@@ -268,13 +269,13 @@ export function Studio() {
   const [locale, setLocale] = useState<Locale>("ja");
   const [themeId, setThemeId] = useState<ThemeId>("default");
   const [apiUp, setApiUp] = useState<boolean | null>(null);
-  const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [accountName, setAccountName] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [photoId, setPhotoId] = useState<string>("");
   const [fileFacts, setFileFacts] = useState<FileFacts | null>(null);
   const [webPages, setWebPages] = useState<WebPage[]>([]);
+  const [webImages, setWebImages] = useState<WebImage[]>([]);
   const [rightsQuery, setRightsQuery] = useState("");
   const [objects, setObjects] = useState<PhotoObject[]>([]);
   const [pose, setPose] = useState<PoseData>(EMPTY_POSE);
@@ -582,8 +583,6 @@ export function Studio() {
         }
       } catch (caught) {
         console.error("session resume failed", caught);
-      } finally {
-        setSessionChecked(true);
       }
     })();
   }, []);
@@ -795,6 +794,7 @@ export function Studio() {
     setLabelsPending(false);
     setFileFacts(null);
     setWebPages([]);
+    setWebImages([]);
     setRightsQuery("");
     setPanels([{ view: "photo", camera: "front" }]);
     setPerspective("off");
@@ -816,6 +816,7 @@ export function Studio() {
       }
       setFileFacts(result.file_facts);
       setWebPages(result.web_pages);
+      setWebImages(result.web_images);
       setPose(result.pose ?? EMPTY_POSE);
       setObjects(
         result.objects.map((item) => ({
@@ -944,14 +945,6 @@ export function Studio() {
     } finally {
       setBusy(null);
     }
-  }
-
-  if (!sessionChecked) {
-    return (
-      <main className="gate-wrap">
-        <p className="hint">{text(locale, "checkingSession")}</p>
-      </main>
-    );
   }
 
   if (!sessionReady) {
@@ -1112,9 +1105,10 @@ export function Studio() {
               </div>
             </div>
           ) : null}
-          {webPages.length > 0 ? (
+          {webPages.length > 0 || webImages.length > 0 ? (
             <div className="facts">
-              <p className="hint">{text(locale, "webPagesNote")}</p>
+              <WebImageGrid locale={locale} images={webImages} />
+              {webPages.length > 0 ? <p className="hint">{text(locale, "webPagesNote")}</p> : null}
               <ul>
                 {webPages.map((page) => (
                   <li key={page.url}>
@@ -1733,6 +1727,7 @@ export function Studio() {
                   {item.cached ? <p className="hint">{text(locale, "cachedLookup")}</p> : null}
                   {item.search_skipped ? <p className="hint">{text(locale, "rightsSkipped")}</p> : null}
                   <p>{item.summary}</p>
+                  <WebImageGrid locale={locale} images={item.web_images ?? []} />
                   <h3>{text(locale, "sources")}</h3>
                   <p className="hint">{text(locale, "similarNote")}</p>
                   <CompareSources
@@ -1902,4 +1897,34 @@ function shown(locale: Locale, value: string | undefined): string {
     return text(locale, "unknown");
   }
   return textValue;
+}
+
+function WebImageGrid({ locale, images }: { locale: Locale; images: WebImage[] }) {
+  if (!images.length) {
+    return null;
+  }
+  return (
+    <div className="web-images">
+      <p className="hint">{text(locale, "webImagesNote")}</p>
+      <ul>
+        {images.map((image) => {
+          const href = image.page_url || image.url;
+          const label =
+            image.match === "full"
+              ? text(locale, "webImageFull")
+              : image.match === "partial"
+                ? text(locale, "webImagePartial")
+                : text(locale, "webImageSimilar");
+          return (
+            <li key={image.url}>
+              <a href={href} target="_blank" rel="noreferrer">
+                <img src={image.url} alt={label} />
+                <span>{label}</span>
+              </a>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }

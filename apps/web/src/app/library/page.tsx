@@ -89,7 +89,6 @@ function parseTags(raw: string): string[] {
 
 export default function LibraryPage() {
   const [locale, setLocale] = useState<Locale>("ja");
-  const [sessionChecked, setSessionChecked] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [accountName, setAccountName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -158,8 +157,6 @@ export default function LibraryPage() {
         );
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : text(next, "sessionNeeded"));
-      } finally {
-        setSessionChecked(true);
       }
     })();
   }, []);
@@ -280,14 +277,6 @@ export default function LibraryPage() {
     } finally {
       setBusy(false);
     }
-  }
-
-  if (!sessionChecked) {
-    return (
-      <main className="gate-wrap">
-        <p className="hint">{text(locale, "checkingSession")}</p>
-      </main>
-    );
   }
 
   if (!sessionReady) {

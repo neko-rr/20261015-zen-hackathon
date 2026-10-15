@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, Request, Response, UploadFile
@@ -21,7 +22,7 @@ from app.errors import business_error, register_error_handlers, unauthorized_err
 from app.file_facts import read_file_facts
 from app.label import name_subjects
 from app.lookup import answer_question, cite_material, lookup_object
-from app.web_detect import detect_pages
+from app.web_detect import detect_web
 from app.materials import (
     delete_material,
     list_owner_materials,
@@ -63,10 +64,14 @@ async def _lifespan(_app: FastAPI):
 
 
 def _warm_vision() -> None:
-    """姿勢・手・輪郭を起動時に読む。1枚目の写真で待たせない。"""
+    """姿勢・手・輪郭を起動時に読む。ログインの応答は待たせない。"""
     if os.getenv("VISION_WARM", "1").strip() == "0":
         logger.info("vision warm skipped")
         return
+    threading.Thread(target=_warm_vision_now, name="vision-warm", daemon=True).start()
+
+
+def _warm_vision_now() -> None:
     try:
         from app.hands import warm as warm_hands
         from app.pose import warm as warm_pose
@@ -241,7 +246,9 @@ async def create_photo_analysis(
     pose = analysis.get("pose") or {"landmarks": [], "edges": [], "muscles": []}
     labels_pending = bool(settings.gemini_model)
     file_facts = read_file_facts(image)
-    web_pages = detect_pages(image)
+    web = detect_web(image)
+    web_pages = web["pages"]
+    web_images = web["images"]
     photo_id = create_photo(
         objects,
         principal.id,
@@ -249,6 +256,7 @@ async def create_photo_analysis(
         labels_pending=labels_pending,
         file_facts=file_facts,
         web_pages=web_pages,
+        web_images=web_images,
         image=image,
         content_type=mime_type,
     )
@@ -270,6 +278,7 @@ async def create_photo_analysis(
         "labels_pending": labels_pending,
         "file_facts": file_facts,
         "web_pages": web_pages,
+        "web_images": web_images,
     }
 
 
@@ -288,6 +297,7 @@ def read_photo(photo_id: str, request: Request) -> dict:
         "labels_pending": photo["labels_pending"],
         "file_facts": photo.get("file_facts") or {},
         "web_pages": photo.get("web_pages") or [],
+        "web_images": photo.get("web_images") or [],
     }
 
 
@@ -335,7 +345,11 @@ def create_lookup(photo_id: str, body: LookupRequest, request: Request) -> dict:
         work_title=str(target.get("work_title") or ""),
         query=body.query,
     )
-    lookup = {"object_id": body.object_id, **result}
+    lookup = {
+        "object_id": body.object_id,
+        "web_images": list(photo.get("web_images") or []),
+        **result,
+    }
     if not add_lookup(photo_id, principal.id, lookup):
         raise business_error("object_not_found", "写真が見つかりません。")
     return lookup

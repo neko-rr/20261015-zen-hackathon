@@ -36,8 +36,12 @@
 
 ## 請求
 
-`gcloud billing projects describe` では請求リンクは有効。一方、バケット `illustration-support-photos` へのオブジェクト作成は、請求先アカウントが closed のため 403 になる。ファイルをクラウドに置く前に、請求コンソールで請求先を再開するか、開いている請求先を付け直す。
+`gcloud billing projects describe` では請求は有効。写真の保存 API は 200 を返しており、バケットへの書き込みは通っている。
 
-## まだ無いもの（構成上）
+## 有効な API と実行アカウント
 
-- 画面の Cloud Run サービスそのもの（`apps/web/Dockerfile` はある。出すと `illustration-web`）
+実行アカウント `run-runtime` は `roles/aiplatform.user`、`roles/datastore.user`、バケットの `roles/storage.objectAdmin`、`roles/serviceusage.serviceUsageConsumer` を持つ。有効な API には Vertex AI、Cloud Vision、Cloud Speech-to-Text、Firestore、Cloud Storage、Cloud Run が含まれる。API サービスには `RAG_ENABLED`、`GOOGLE_API_KEY`、`GEMINI_API_KEY`、`TYPESAFE_API_KEY` を設定済み（値は書かない）。
+
+## 画面
+
+`illustration-web` は Cloud Run にある。ログイン前の HTML は確認中の文言だけで止めず、ログインフォームを出す。

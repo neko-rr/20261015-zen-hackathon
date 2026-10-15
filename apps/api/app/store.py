@@ -16,6 +16,7 @@ def create_photo(
     labels_pending: bool = False,
     file_facts: dict | None = None,
     web_pages: list | None = None,
+    web_images: list | None = None,
     image: bytes | None = None,
     content_type: str | None = None,
 ) -> str:
@@ -31,6 +32,7 @@ def create_photo(
         "labels_pending": labels_pending,
         "file_facts": dict(file_facts or {}),
         "web_pages": _copy_pages(web_pages),
+        "web_images": _copy_images(web_images),
         "content_type": content_type or "",
     }
     if cloud_persistence_enabled():
@@ -107,6 +109,28 @@ def _copy_pages(pages: list | None) -> list[dict[str, str]]:
     return copied
 
 
+def _copy_images(images: list | None) -> list[dict[str, str]]:
+    copied: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in images or []:
+        if not isinstance(item, dict) or len(copied) >= 8:
+            continue
+        url = str(item.get("url") or "")
+        match = str(item.get("match") or "")
+        if not url.startswith("https://") or url in seen or match not in ("full", "partial", "similar"):
+            continue
+        page_url = str(item.get("page_url") or "")
+        seen.add(url)
+        copied.append(
+            {
+                "url": url,
+                "page_url": page_url if page_url.startswith("https://") else "",
+                "match": match,
+            }
+        )
+    return copied
+
+
 def _copy_pose(pose: dict | None) -> dict:
     source = pose or {}
     return {
@@ -174,4 +198,5 @@ def _view(photo: dict) -> dict:
         "labels_pending": bool(photo.get("labels_pending")),
         "file_facts": dict(photo.get("file_facts") or {}),
         "web_pages": _copy_pages(photo.get("web_pages")),
+        "web_images": _copy_images(photo.get("web_images")),
     }

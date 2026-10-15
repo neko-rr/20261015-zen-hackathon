@@ -208,6 +208,12 @@ export type Project = {
   memo?: string;
 };
 
+export type WebImage = {
+  url: string;
+  page_url: string;
+  match: "full" | "partial" | "similar";
+};
+
 export type WebPage = {
   url: string;
   title: string;
@@ -223,6 +229,7 @@ export type Lookup = {
   cached?: boolean;
   search_skipped?: boolean;
   searched_at?: string;
+  web_images?: WebImage[];
 };
 
 export type ProjectMemoryHit = {
@@ -334,11 +341,30 @@ function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
 
 export type SessionInfo = { session_id: string; kind: string; username?: string };
 
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 export async function currentSession(): Promise<SessionInfo | null> {
   try {
-    const response = await apiFetch("/sessions/me", {
-      signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
-    });
+    const response = await withDeadline(
+      apiFetch("/sessions/me", {
+        signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
+      }),
+      SESSION_TIMEOUT_MS,
+    );
     if (response.status === 401) {
       return null;
     }
@@ -470,6 +496,7 @@ export async function analyzePhoto(
   labels_pending: boolean;
   file_facts: FileFacts;
   web_pages: WebPage[];
+  web_images: WebImage[];
 }> {
   if (!file || file.size <= 0) {
     throw new ApiError("写真が空です。", "invalid_image");
@@ -497,6 +524,7 @@ export async function analyzePhoto(
       labels_pending?: boolean;
       file_facts?: FileFacts;
       web_pages?: WebPage[];
+      web_images?: WebImage[];
     };
     return {
       photo_id: raw.photo_id,
@@ -505,6 +533,7 @@ export async function analyzePhoto(
       labels_pending: Boolean(raw.labels_pending),
       file_facts: raw.file_facts ?? emptyFileFacts(),
       web_pages: raw.web_pages ?? [],
+      web_images: raw.web_images ?? [],
     };
   } catch (error) {
     if (error instanceof ApiError) {
@@ -602,6 +631,7 @@ export async function getPhoto(photoId: string): Promise<{
   labels_pending: boolean;
   file_facts: FileFacts;
   web_pages: WebPage[];
+  web_images: WebImage[];
 }> {
   if (!photoId.trim()) {
     throw new ApiError("写真が見つかりません。", "object_not_found");
@@ -620,6 +650,7 @@ export async function getPhoto(photoId: string): Promise<{
       labels_pending?: boolean;
       file_facts?: FileFacts;
       web_pages?: WebPage[];
+      web_images?: WebImage[];
     };
     return {
       photo_id: raw.photo_id,
@@ -628,6 +659,7 @@ export async function getPhoto(photoId: string): Promise<{
       labels_pending: Boolean(raw.labels_pending),
       file_facts: raw.file_facts ?? emptyFileFacts(),
       web_pages: raw.web_pages ?? [],
+      web_images: raw.web_images ?? [],
     };
   } catch (error) {
     if (error instanceof ApiError) {
