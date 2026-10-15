@@ -8,6 +8,8 @@ RUN apt-get update \
     curl \
     libglib2.0-0 \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libgomp1 \
     libxcb1 \
     libsm6 \
