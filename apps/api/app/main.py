@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,12 +31,14 @@ from app.materials import (
     patch_material,
     register_material,
     read_material,
+    read_material_file,
 )
 from app.material_store import count_materials_in_project
 from app.owner_prefs import account_preferences, update_preferences
 from app.project_store import (
     create_project,
     delete_project,
+    forget_photo,
     list_projects,
     note_library_call,
     note_photo,
@@ -45,7 +48,7 @@ from app.photo_prepare import prepare_photo
 from app.settings import load_settings, require_gemini
 from app.speech import transcribe_pose
 from app.spoken_pose import instruct_pose
-from app.store import add_lookup, add_question, create_photo, finish_labels, get_photo
+from app.store import add_lookup, add_question, create_photo, finish_labels, get_photo, remove_photo
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -282,6 +285,16 @@ async def create_photo_analysis(
     }
 
 
+@app.delete("/photos/{photo_id}")
+def delete_saved_photo(photo_id: str, request: Request) -> dict:
+    """いまの試しを消す。所有者以外の写真は残す。"""
+    principal = require_account(request, settings.session_signing_secret)
+    if photo_id.strip() and remove_photo(photo_id, principal.id):
+        forget_photo(principal.id, photo_id)
+        logger.info("photo_deleted")
+    return {"ok": True}
+
+
 @app.get("/photos/{photo_id}")
 def read_photo(photo_id: str, request: Request) -> dict:
     principal = require_account(request, settings.session_signing_secret)
@@ -508,6 +521,18 @@ def get_materials(request: Request, project_id: str = "") -> dict:
         "materials": list_owner_materials(principal.id, project_id=project_id),
         "tags": list_owner_tags(principal.id),
     }
+
+
+@app.get("/materials/{doc_id}/file")
+def material_file_route(doc_id: str, request: Request) -> Response:
+    principal = require_account(request, settings.session_signing_secret)
+    data, mime, title = read_material_file(principal.id, doc_id)
+    quoted = quote(title)
+    return Response(
+        content=data,
+        media_type=mime or "application/octet-stream",
+        headers={"Content-Disposition": f"inline; filename*=UTF-8''{quoted}"},
+    )
 
 
 @app.get("/materials/{doc_id}")

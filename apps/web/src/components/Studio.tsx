@@ -8,6 +8,7 @@ import {
   analyzePhoto,
   askQuestion,
   checkHealth,
+  deletePhoto,
   getPhoto,
   currentSession,
   listMaterials,
@@ -612,18 +613,69 @@ export function Studio() {
     };
   }, []);
 
+  function beginNewAttempt() {
+    const previous = photoId;
+    setHistory([]);
+    setChatHistory([]);
+    setChatDraft("");
+    setChecks({});
+    setFavorites({});
+    setNotes({});
+    setObjects([]);
+    setPose(EMPTY_POSE);
+    setPoseChoices([]);
+    setPosePick(0);
+    setPoseFromCatalog(false);
+    setSpokenQuery("");
+    setAdjusts({});
+    setEditId("");
+    setSelectedId("");
+    setLabelsPending(false);
+    setFileFacts(null);
+    setWebPages([]);
+    setWebImages([]);
+    setRightsQuery("");
+    setPanels([{ view: "photo", camera: "front" }]);
+    setPerspective("off");
+    setHorizonY(0.5);
+    setVpOne(0.5);
+    setVpLeft(0.22);
+    setVpRight(0.78);
+    setPhotoFlip(false);
+    setGrayscale(false);
+    setStep("pick");
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setPreviewUrl("");
+    setPhotoId("");
+    if (!previous) {
+      return;
+    }
+    void deletePhoto(previous)
+      .then(() => {
+        if (activeProjectId) {
+          void refreshProjects();
+        }
+      })
+      .catch((deleteError) => {
+        console.error("photo delete failed", deleteError);
+      });
+  }
+
   async function submitSpoken(message: string) {
     if (message === spokenQuery && poseChoices.length > 1) {
       showSpokenChoice((posePick + 1) % poseChoices.length);
       return;
     }
+    beginNewAttempt();
     const result = await speakPose(message);
     const first = result.options[0];
     setSpokenQuery(message);
     setPoseChoices(result.options);
     setPosePick(0);
     setPoseFromCatalog(result.pose_source === "catalog");
-    applySpoken(first, result.mannequin, sources.length === 0);
+    applySpoken(first, result.mannequin, true);
   }
 
   async function onSpeak() {
@@ -776,37 +828,7 @@ export function Studio() {
     setBusy("analyze");
     setError("");
     const prepared = await preparePhotoFile(file);
-    setHistory([]);
-    setChatHistory([]);
-    setChatDraft("");
-    setChecks({});
-    setFavorites({});
-    setNotes({});
-    setSelectedId("");
-    setStep("pick");
-    setPose(EMPTY_POSE);
-    setPoseChoices([]);
-    setPosePick(0);
-    setPoseFromCatalog(false);
-    setSpokenQuery("");
-    setAdjusts({});
-    setEditId("");
-    setLabelsPending(false);
-    setFileFacts(null);
-    setWebPages([]);
-    setWebImages([]);
-    setRightsQuery("");
-    setPanels([{ view: "photo", camera: "front" }]);
-    setPerspective("off");
-    setHorizonY(0.5);
-    setVpOne(0.5);
-    setVpLeft(0.22);
-    setVpRight(0.78);
-    setPhotoFlip(false);
-    setGrayscale(false);
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
+    beginNewAttempt();
     setPreviewUrl(URL.createObjectURL(prepared));
     try {
       const result = await analyzePhoto(prepared);
@@ -830,6 +852,10 @@ export function Studio() {
         result.pose.people?.some((person) => person.mannequin?.joints?.length) ||
           result.pose.mannequin?.joints?.length,
       );
+      const hasMask = result.objects.some((item) => (item.contour?.length ?? 0) >= 3);
+      if (!hasDoll && !hasMask) {
+        setError(text(locale, "poseEmpty"));
+      }
       setPanels([{ view: hasDoll ? "skeleton" : "mask", camera: "front" }]);
       setLabelsPending(result.labels_pending);
       setStep("pick");
@@ -1322,6 +1348,7 @@ export function Studio() {
               </div>
             </div>
           ) : null}
+          <div className="studio-stage">
           {previewUrl || sources.length ? (
             <div className={`view-grid is-${panels.length}`}>
               {panels.map((panel, index) => (
@@ -1502,6 +1529,18 @@ export function Studio() {
               ))}
             </div>
           ) : null}
+          <MaterialDesk
+            locale={locale}
+            materials={library}
+            openIds={openMaterialIds}
+            projectId={activeProjectId}
+            onOpenIds={setOpenMaterialIds}
+            onRecorded={() => {
+              void refreshProjects();
+            }}
+            disabled={busy !== null}
+          />
+          </div>
         </section>
 
         <section
@@ -1520,17 +1559,6 @@ export function Studio() {
             </button>
           </div>
           <div id="sources-pane-body" hidden={!sourcesOpen}>
-          <MaterialDesk
-            locale={locale}
-            materials={library}
-            openIds={openMaterialIds}
-            projectId={activeProjectId}
-            onOpenIds={setOpenMaterialIds}
-            onRecorded={() => {
-              void refreshProjects();
-            }}
-            disabled={busy !== null}
-          />
           <h2>{text(locale, "layers")}</h2>
           {objects.length === 0 ? <p className="hint">{text(locale, "noLayers")}</p> : null}
           <ul className="layers">
@@ -1900,6 +1928,7 @@ function shown(locale: Locale, value: string | undefined): string {
 }
 
 function WebImageGrid({ locale, images }: { locale: Locale; images: WebImage[] }) {
+  const [open, setOpen] = useState<WebImage | null>(null);
   if (!images.length) {
     return null;
   }
@@ -1909,22 +1938,83 @@ function WebImageGrid({ locale, images }: { locale: Locale; images: WebImage[] }
       <ul>
         {images.map((image) => {
           const href = image.page_url || image.url;
-          const label =
-            image.match === "full"
-              ? text(locale, "webImageFull")
-              : image.match === "partial"
-                ? text(locale, "webImagePartial")
-                : text(locale, "webImageSimilar");
+          const label = webImageLabel(locale, image.match);
           return (
             <li key={image.url}>
-              <a href={href} target="_blank" rel="noreferrer">
+              <button type="button" onClick={() => setOpen(image)}>
                 <img src={image.url} alt={label} />
                 <span>{label}</span>
+              </button>
+              <a href={href} target="_blank" rel="noreferrer" title={href}>
+                {href}
               </a>
             </li>
           );
         })}
       </ul>
+      {open ? <WebImageDialog locale={locale} image={open} onClose={() => setOpen(null)} /> : null}
     </div>
   );
+}
+
+function WebImageDialog({
+  locale,
+  image,
+  onClose,
+}: {
+  locale: Locale;
+  image: WebImage;
+  onClose: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const href = image.page_url || image.url;
+  useEffect(() => {
+    dialogRef.current?.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={dialogRef}
+      className="web-image-dialog"
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === dialogRef.current) {
+          onClose();
+        }
+      }}
+    >
+      <img src={image.url} alt={webImageLabel(locale, image.match)} />
+      {image.page_url ? (
+        <p>
+          <span>{text(locale, "webImagePage")}</span>
+          <a href={image.page_url} target="_blank" rel="noreferrer">
+            {image.page_url}
+          </a>
+        </p>
+      ) : null}
+      <p>
+        <span>{text(locale, "webImageFile")}</span>
+        <a href={image.url} target="_blank" rel="noreferrer">
+          {image.url}
+        </a>
+      </p>
+      <div className="memo-actions">
+        <a href={href} target="_blank" rel="noreferrer">
+          {text(locale, "webImageOpen")}
+        </a>
+        <button type="button" onClick={onClose}>
+          {text(locale, "webImageClose")}
+        </button>
+      </div>
+    </dialog>
+  );
+}
+
+function webImageLabel(locale: Locale, match: WebImage["match"]): string {
+  if (match === "full") {
+    return text(locale, "webImageFull");
+  }
+  if (match === "partial") {
+    return text(locale, "webImagePartial");
+  }
+  return text(locale, "webImageSimilar");
 }

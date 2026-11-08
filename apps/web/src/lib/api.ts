@@ -624,6 +624,27 @@ export async function transcribePose(audio: Blob, language: "ja" | "en"): Promis
   }
 }
 
+export async function deletePhoto(photoId: string): Promise<void> {
+  if (!photoId.trim()) {
+    return;
+  }
+  try {
+    const response = await apiFetch(`/photos/${encodeURIComponent(photoId)}`, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      throw await readFailure(response);
+    }
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    console.error("photo delete failed", error);
+    throw new ApiError("前の写真を消せませんでした。", "storage_failed");
+  }
+}
+
 export async function getPhoto(photoId: string): Promise<{
   photo_id: string;
   objects: PhotoObject[];
@@ -854,6 +875,27 @@ export async function deleteMaterial(docId: string): Promise<void> {
     }
     console.error("delete material failed", error);
     throw new ApiError("資料の削除に失敗しました。", "material_failed");
+  }
+}
+
+export async function materialObjectUrl(docId: string): Promise<string> {
+  if (!docId.trim()) {
+    throw new ApiError("資料が見つかりません。", "object_not_found");
+  }
+  try {
+    const response = await apiFetch(`/materials/${encodeURIComponent(docId)}/file`, {
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) {
+      throw await readFailure(response);
+    }
+    return URL.createObjectURL(await response.blob());
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    console.error("material file failed", error);
+    throw new ApiError("資料を開けませんでした。", "material_failed");
   }
 }
 

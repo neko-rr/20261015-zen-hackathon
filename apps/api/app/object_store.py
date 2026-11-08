@@ -44,6 +44,20 @@ def put_bytes(object_name: str, data: bytes, content_type: str) -> None:
         raise system_error("storage_failed", "ファイルの保存に失敗しました。") from exc
 
 
+def get_bytes(object_name: str) -> bytes:
+    if not object_name.startswith("owners/"):
+        raise system_error("storage_failed", "ファイルを読めませんでした。")
+    try:
+        blob = _bucket().blob(object_name)
+        data = blob.download_as_bytes()
+    except Exception as exc:
+        logger.exception("gcs read failed")
+        raise system_error("storage_failed", "ファイルを読めませんでした。") from exc
+    if not data:
+        raise system_error("storage_failed", "ファイルを読めませんでした。")
+    return data
+
+
 def delete_prefix(prefix: str) -> None:
     if not prefix.startswith("owners/"):
         raise system_error("storage_failed", "ファイルの削除に失敗しました。")

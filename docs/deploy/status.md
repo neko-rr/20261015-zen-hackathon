@@ -34,14 +34,25 @@
 
 クライアント SDK からは読まない。API のサービスアカウント（ADC）だけが書く。メタデータの書き込みは確認済み。
 
-## 請求
+## 請求・運用状態（審査終了後）
 
-`gcloud billing projects describe` では請求は有効。写真の保存 API は 200 を返しており、バケットへの書き込みは通っている。
+ハッカソン審査終了後、課金停止のためソフト終了済み（プロジェクト自体は残す）。
+
+| 項目 | 状態 |
+|------|------|
+| 請求 | プロジェクトから unlink（`billingEnabled: false`） |
+| Cloud Run | `illustration-api` / `illustration-web` を削除済み |
+| GCS | バケットは残し、オブジェクトは空 |
+| Artifact Registry | `cloud-run-source-deploy`（asia-northeast2）を削除済み |
+| Firestore | データベース定義は残存（課金 unlink により利用停止） |
+
+再デプロイ: 請求を再リンク → `scripts/deploy.ps1` または GitHub Actions の deploy。  
+`main` への push は deploy ワークフローを起動するが、請求 unlink 中はデプロイ失敗が想定どおり。
 
 ## 有効な API と実行アカウント
 
-実行アカウント `run-runtime` は `roles/aiplatform.user`、`roles/datastore.user`、バケットの `roles/storage.objectAdmin`、`roles/serviceusage.serviceUsageConsumer` を持つ。有効な API には Vertex AI、Cloud Vision、Cloud Speech-to-Text、Firestore、Cloud Storage、Cloud Run が含まれる。API サービスには `RAG_ENABLED`、`GOOGLE_API_KEY`、`GEMINI_API_KEY`、`TYPESAFE_API_KEY` を設定済み（値は書かない）。
+実行アカウント `run-runtime` は `roles/aiplatform.user`、`roles/datastore.user`、バケットの `roles/storage.objectAdmin`、`roles/serviceusage.serviceUsageConsumer` を持つ。有効な API には Vertex AI、Cloud Vision、Cloud Speech-to-Text、Firestore、Cloud Storage、Cloud Run が含まれる。再デプロイ時に API サービスへ `RAG_ENABLED` や鍵系（`GOOGLE_API_KEY` / `GEMINI_API_KEY` / `TYPESAFE_API_KEY`）を再設定する（値は書かない）。
 
 ## 画面
 
-`illustration-web` は Cloud Run にある。ログイン前の HTML は確認中の文言だけで止めず、ログインフォームを出す。
+ソフト終了後、Cloud Run 上の `illustration-web` は無し。ローカルまたは再デプロイ後に確認する。ログイン前の HTML は確認中の文言だけで止めず、ログインフォームを出す。

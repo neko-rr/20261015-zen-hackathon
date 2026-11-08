@@ -60,6 +60,23 @@ def test_material_upload_list_delete_and_reject_type() -> None:
     assert user.get("/materials").json()["materials"] == []
 
 
+def test_material_file_is_owner_only() -> None:
+    user = _session()
+    other = _session()
+    created = user.post(
+        "/materials",
+        params={"material_kind": "own_work"},
+        files=[("files", ("setting.md", b"# sleeve\nred cloth", "text/markdown"))],
+    )
+    doc_id = created.json()["materials"][0]["doc_id"]
+    opened = user.get(f"/materials/{doc_id}/file")
+    assert opened.status_code == 200
+    assert opened.content == b"# sleeve\nred cloth"
+    denied = other.get(f"/materials/{doc_id}/file")
+    assert denied.status_code == 400
+    assert denied.json()["error"]["code"] == "object_not_found"
+
+
 def test_material_isolation_between_owners() -> None:
     a = _session()
     b = _session()

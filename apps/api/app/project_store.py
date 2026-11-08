@@ -64,6 +64,19 @@ def create_project(owner_id: str, name: str) -> dict[str, Any]:
     return dict(record)
 
 
+def forget_photo(owner_id: str, photo_id: str) -> None:
+    """全部の案件から、その写真の記録だけ外す。"""
+    if not owner_id.strip() or not photo_id.strip():
+        return
+    for project in list_projects(owner_id):
+        photos = list(project.get("photos") or [])
+        kept = [row for row in photos if row.get("photo_id") != photo_id]
+        if len(kept) == len(photos):
+            continue
+        project["photos"] = kept
+        _persist(owner_id, dict(project))
+
+
 def note_photo(owner_id: str, project_id: str, photo_id: str) -> dict[str, Any] | None:
     """この作業で上げた写真を記録する。実体はユーザーの写真のまま。"""
     if not photo_id.strip():

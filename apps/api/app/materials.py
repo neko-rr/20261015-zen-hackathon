@@ -191,6 +191,37 @@ def patch_material(
     return _public_meta(updated)
 
 
+def read_material_file(owner_id: str, doc_id: str) -> tuple[bytes, str, str]:
+    """資料の実体。所有者だけ。画像は縮小版があればそれを返す。"""
+    item = get_material(owner_id, doc_id)
+    if item is None:
+        raise business_error("object_not_found", "資料が見つかりません。")
+    title = str(item.get("title") or "file")
+    mime = str(item.get("mime_type") or "application/octet-stream")
+    kind = str(item.get("material_kind") or "")
+    media = str(item.get("media_type") or "")
+    if cloud_persistence_enabled():
+        from app.object_store import get_bytes, material_object_name
+
+        if media == "image":
+            try:
+                preview = get_bytes(material_object_name(owner_id, kind, doc_id, "index.jpg"))
+                return preview, "image/jpeg", title
+            except Exception:
+                logger.info("material preview missing")
+        return get_bytes(material_object_name(owner_id, kind, doc_id, title)), mime, title
+
+    folder = material_dir(owner_id, kind, doc_id).resolve()
+    if media == "image":
+        preview = (folder / "index.jpg").resolve()
+        if preview.is_file() and preview.is_relative_to(folder):
+            return preview.read_bytes(), "image/jpeg", title
+    path = (folder / title).resolve()
+    if not path.is_file() or not path.is_relative_to(folder):
+        raise business_error("object_not_found", "資料が見つかりません。")
+    return path.read_bytes(), mime, title
+
+
 def read_material(owner_id: str, doc_id: str) -> dict[str, Any]:
     item = get_material(owner_id, doc_id)
     if item is None:

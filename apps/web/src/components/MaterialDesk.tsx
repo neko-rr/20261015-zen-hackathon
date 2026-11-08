@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { ApiError, citeMaterial, citationRefreshDays, noteProjectLibrary, readMaterial, saveCitationRefreshDays, type Lookup, type Material } from "@/lib/api";
+import { ApiError, citeMaterial, citationRefreshDays, materialObjectUrl, noteProjectLibrary, readMaterial, saveCitationRefreshDays, type Lookup, type Material } from "@/lib/api";
+import { renderMarkdown } from "@/lib/markdown";
 import { text, type Locale } from "@/lib/messages";
 
 type Props = {
@@ -32,6 +33,11 @@ export function MaterialDesk({
   const [dragId, setDragId] = useState("");
   const [notice, setNotice] = useState("");
   const [refreshDays, setRefreshDays] = useState("30");
+  const [previews, setPreviews] = useState<Record<string, string>>({});
+  const [previewFailed, setPreviewFailed] = useState<Record<string, boolean>>({});
+  const loadingPreview = useRef(new Set<string>());
+  const previewsRef = useRef(previews);
+  previewsRef.current = previews;
 
   useEffect(() => {
     void citationRefreshDays()
@@ -75,6 +81,44 @@ export function MaterialDesk({
     }
   }, [openIds, texts]);
 
+  useEffect(() => {
+    for (const id of openIds) {
+      const item = materials.find((row) => row.doc_id === id);
+      const media = item?.media_type;
+      if (media !== "image" && media !== "pdf") {
+        continue;
+      }
+      if (previews[id] || previewFailed[id] || loadingPreview.current.has(id)) {
+        continue;
+      }
+      loadingPreview.current.add(id);
+      void materialObjectUrl(id)
+        .then((url) => {
+          setPreviews((prev) => {
+            if (prev[id]) {
+              URL.revokeObjectURL(url);
+              return prev;
+            }
+            return { ...prev, [id]: url };
+          });
+        })
+        .catch(() => {
+          setPreviewFailed((prev) => ({ ...prev, [id]: true }));
+        })
+        .finally(() => {
+          loadingPreview.current.delete(id);
+        });
+    }
+  }, [openIds, materials, previews, previewFailed]);
+
+  useEffect(() => {
+    return () => {
+      for (const url of Object.values(previewsRef.current)) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, []);
+
   function openPicked() {
     if (!pick || openIds.includes(pick)) {
       return;
@@ -92,6 +136,18 @@ export function MaterialDesk({
   }
 
   function closeCard(id: string) {
+    const url = previews[id];
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+    setPreviews((prev) => {
+      if (!prev[id]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     onOpenIds(openIds.filter((item) => item !== id));
   }
 
@@ -221,7 +277,14 @@ export function MaterialDesk({
                       ? text(locale, "kindOwn")
                       : text(locale, "kindThird")}
                   </p>
-                  <pre className="material-excerpt">{texts[id] || text(locale, "libraryEmptyText")}</pre>
+                  <MaterialBody
+                    locale={locale}
+                    item={item}
+                    title={title}
+                    textBody={texts[id] || ""}
+                    previewUrl={previews[id] || ""}
+                    previewFailed={Boolean(previewFailed[id])}
+                  />
                   <form
                     className="material-cite"
                     onSubmit={(event) => {
@@ -276,4 +339,43 @@ export function MaterialDesk({
       </div>
     </section>
   );
+}
+
+function MaterialBody({
+  locale,
+  item,
+  title,
+  textBody,
+  previewUrl,
+  previewFailed,
+}: {
+  locale: Locale;
+  item: Material | undefined;
+  title: string;
+  textBody: string;
+  previewUrl: string;
+  previewFailed: boolean;
+}) {
+  const media = item?.media_type || "";
+  if ((media === "image" || media === "pdf") && !previewFailed) {
+    if (!previewUrl) {
+      return <p className="hint">{text(locale, "libraryPreviewWait")}</p>;
+    }
+    if (media === "image") {
+      return <img className="material-preview" src={previewUrl} alt={title} />;
+    }
+    return <iframe className="material-preview-frame" title={title} src={previewUrl} />;
+  }
+  if (!textBody) {
+    return <p className="hint">{text(locale, "libraryEmptyText")}</p>;
+  }
+  if (media === "note") {
+    return (
+      <div
+        className="markdown-body material-body"
+        dangerouslySetInnerHTML={{ __html: renderMarkdown(textBody) }}
+      />
+    );
+  }
+  return <pre className="material-excerpt">{textBody}</pre>;
 }

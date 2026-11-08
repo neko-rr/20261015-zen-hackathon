@@ -1,10 +1,12 @@
 """写真と出典履歴。GCS_BUCKET があるときは Firestore。無いときはプロセス内。"""
 
+import logging
 from threading import Lock
 from uuid import uuid4
 
 from app.cloud_config import cloud_persistence_enabled
 
+logger = logging.getLogger(__name__)
 _lock = Lock()
 _photos: dict[str, dict] = {}
 
@@ -54,6 +56,30 @@ def create_photo(
     with _lock:
         _photos[photo_id] = record
     return photo_id
+
+
+def remove_photo(photo_id: str, owner_id: str) -> bool:
+    """所有者の写真だけ消す。無いときは何もしない。"""
+    if not photo_id.strip() or not owner_id.strip():
+        return False
+    if cloud_persistence_enabled():
+        from app.object_store import delete_prefix
+        from app.record_store import delete_photo, load_photo
+
+        if load_photo(owner_id, photo_id) is None:
+            return False
+        delete_photo(owner_id, photo_id)
+        try:
+            delete_prefix(f"owners/{owner_id}/photos/{photo_id}/")
+        except Exception:
+            logger.exception("photo files delete failed")
+        return True
+    with _lock:
+        photo = _photos.get(photo_id)
+        if photo is None or photo.get("owner_id") != owner_id:
+            return False
+        del _photos[photo_id]
+        return True
 
 
 def get_photo(photo_id: str, owner_id: str) -> dict | None:
